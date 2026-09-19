@@ -6,8 +6,31 @@ estimates and paid tiers.
 
 ## 1. Database
 
-Create a Supabase project, then run `migrations/0001_init.sql` in the SQL editor
-(or `supabase db push` if you use the CLI).
+Project `iashboyuhcbhsrvkfsuk`. Apply the schema either way:
+
+```bash
+# From a machine that can reach Supabase:
+./supabase/apply.sh 'postgresql://postgres:<password>@db.iashboyuhcbhsrvkfsuk.supabase.co:5432/postgres'
+```
+
+or paste `migrations/0001_init.sql` into the dashboard's SQL editor. Every
+statement is idempotent, so re-running is safe.
+
+`apply.sh` then verifies: the three tables exist, RLS is on for each, the
+policies are present, and `shared_estimates` carries no direct grant to `anon`
+or `authenticated` (access goes through `get_shared_estimate`).
+
+### The MCP server
+
+`.mcp.json` in the repository root registers Supabase's hosted MCP server for
+this project, so a local Claude Code session picks it up and can drive the
+project directly after authenticating.
+
+Note that it cannot be used from a Claude Code **web/cloud** session: that
+sandbox's egress policy denies `mcp.supabase.com`, `supabase.com`,
+`api.supabase.com` and `*.supabase.co` alike, and the Postgres ports (5432,
+6543) are not reachable either. The offline suite below exists precisely so the
+schema can still be exercised there.
 
 It creates `profiles`, `saved_estimates` and `billing_events`, enables row level
 security on all three, and installs the triggers described below.
