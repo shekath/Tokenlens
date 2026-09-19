@@ -55,6 +55,40 @@ jobs:
           VITE_LEMON_VARIANT_PRO_MONTHLY: ${{ vars.VITE_LEMON_VARIANT_PRO_MONTHLY }}
           VITE_LEMON_VARIANT_PRO_ANNUAL: ${{ vars.VITE_LEMON_VARIANT_PRO_ANNUAL }}
           VITE_LEMON_VARIANT_TEAM_MONTHLY: ${{ vars.VITE_LEMON_VARIANT_TEAM_MONTHLY }}
+      # A build with the Supabase variables missing succeeds and silently ships
+      # the backend-free site, so a green run is not evidence that the config
+      # landed. This makes the log say, and fails loudly on the one mistake
+      # that is easy to make and invisible: setting them as Secrets instead of
+      # Variables, or misspelling a name, so `vars.*` resolves empty.
+      - name: Verify build configuration
+        env:
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "VITE_SUPABASE_URL is not set — deploying in backend-free mode."
+            echo "The counter and cost dashboard work; accounts and paid tabs report as unavailable."
+            echo "To enable them, add it under Settings → Secrets and variables → Actions → *Variables*."
+            exit 0
+          fi
+
+          host="$(printf '%s' "$SUPABASE_URL" | sed -E 's#^https?://##; s#/.*$##')"
+          echo "VITE_SUPABASE_URL is set (host: $host)"
+
+          # Vite only inlines VITE_-prefixed values it can actually see at build
+          # time. Confirm it reached the bundle rather than trusting that it did.
+          if grep -rq "$host" dist/assets/; then
+            echo "Confirmed: the Supabase host is inlined in the built bundle."
+          else
+            echo "::error::VITE_SUPABASE_URL is set but does not appear in dist/. The build did not pick it up."
+            exit 1
+          fi
+
+          if grep -rq '"role":"service_role"' dist/assets/ 2>/dev/null; then
+            echo "::error::A service-role key appears in the client bundle. Remove it immediately and rotate the key."
+            exit 1
+          fi
+          echo "Confirmed: no service-role key in the bundle."
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
