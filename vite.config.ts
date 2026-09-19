@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: '/Tokenlens/',
   build: {
     target: 'es2022',
     // The BPE rank tables are megabytes of static data and are pulled in with
