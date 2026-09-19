@@ -1,0 +1,820 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--plane);
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ============================================================ app shell === */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell {
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 0 var(--gutter) 64px;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--plane) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar__inner {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 12px var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 650;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  margin-right: auto;
+}
+
+.brand__mark {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.brand__sub {
+  color: var(--text-muted);
+  font-weight: 450;
+  font-size: 12px;
+  border-left: 1px solid var(--border);
+  padding-left: 9px;
+  margin-left: 2px;
+}
+
+@media (max-width: 560px) {
+  .brand__sub {
+    display: none;
+  }
+}
+
+/* ============================================================== controls === */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 11px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.btn:hover {
+  background: var(--surface-hover);
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+.btn--ghost:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.btn--icon {
+  width: 32px;
+  padding: 0;
+}
+
+.select {
+  min-height: 32px;
+  padding: 0 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.field__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.input {
+  min-height: 32px;
+  width: 100%;
+  padding: 0 9px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Slider track picks up the sequential ramp so it reads as part of the system. */
+.slider {
+  width: 100%;
+  accent-color: var(--series-1);
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.switch input {
+  accent-color: var(--series-1);
+  width: 16px;
+  height: 16px;
+}
+
+/* ============================================================ composer ==== */
+
+.composer {
+  margin-top: 20px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.composer__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.composer__title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-right: auto;
+}
+
+.composer__samples {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+
+.composer__samples::-webkit-scrollbar {
+  display: none;
+}
+
+.composer__samples .btn {
+  flex: none;
+}
+
+.composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 190px;
+  max-height: 60vh;
+  padding: 14px;
+  background: transparent;
+  border: 0;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.composer textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.composer textarea:focus {
+  outline: 0;
+}
+
+.composer__foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.composer__foot dl {
+  display: flex;
+  gap: 5px;
+  margin: 0;
+}
+
+.composer__foot dt {
+  color: var(--text-muted);
+}
+
+.composer__foot dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ================================================================ cards === */
+
+.grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+/* min(Npx, 100%) so a track never demands more width than the viewport has -
+   a bare minmax(340px, 1fr) forces a horizontal page scroll on a 320px phone. */
+.grid--kpi {
+  grid-template-columns: repeat(auto-fit, minmax(min(168px, 100%), 1fr));
+}
+
+.grid--halves {
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+}
+
+.grid--thirds {
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px;
+  min-width: 0;
+}
+
+.card__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.card__title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  min-width: 0;
+}
+
+.card__note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+  max-width: 62ch;
+}
+
+.card__tools {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+
+.section {
+  margin-top: 32px;
+}
+
+.section__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.section h2 {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.section__note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+  max-width: 78ch;
+}
+
+/* ============================================================= stat tile == */
+
+.tile {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 13px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tile__label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tile__value {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  /* Proportional figures: tabular-nums makes a large standalone number look loose. */
+}
+
+.tile__value--hero {
+  font-size: 52px;
+  letter-spacing: -0.03em;
+}
+
+.tile__foot {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.tile--hero {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(min(200px, 100%), auto) 1fr;
+  gap: 12px 28px;
+  align-items: center;
+}
+
+/* Each label/value/foot group is its own column flow - without this they run
+   together inline. `.hero__meta` is excluded: it is the row that holds the
+   groups, and this selector outranks its own display rule. */
+.tile--hero > div:not(.hero__meta),
+.hero__meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .tile--hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 30px;
+  align-items: flex-start;
+}
+
+.delta {
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.delta--good {
+  color: var(--success-text);
+}
+
+.delta--bad {
+  color: var(--critical);
+}
+
+/* ================================================================ badge === */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.badge--exact {
+  border-color: color-mix(in srgb, var(--good) 45%, transparent);
+  color: var(--success-text);
+}
+
+.badge--est {
+  border-color: color-mix(in srgb, var(--warning) 55%, transparent);
+  color: var(--text-secondary);
+}
+
+.badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* ================================================================ meter === */
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.meter__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.meter__name {
+  font-weight: 550;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meter__value {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.meter__track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.meter__fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 220ms ease;
+}
+
+/* ================================================================ chart === */
+
+.chart {
+  display: block;
+  max-width: 100%;
+}
+
+.chart text {
+  font-family: var(--sans);
+  font-size: 11px;
+  fill: var(--text-muted);
+}
+
+.chart .chart__value {
+  fill: var(--text-secondary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart .chart__cat {
+  fill: var(--text-secondary);
+}
+
+.chart .chart__cat--on {
+  fill: var(--text-primary);
+  font-weight: 650;
+}
+
+.chart__grid line {
+  stroke: var(--gridline);
+  stroke-width: 1;
+}
+
+.chart__axis {
+  stroke: var(--baseline);
+  stroke-width: 1;
+}
+
+.chart__hit {
+  fill: transparent;
+  cursor: default;
+}
+
+.chart__bar {
+  transition: opacity 120ms ease;
+}
+
+.chart__row:hover .chart__bar,
+.chart__row:focus-visible .chart__bar {
+  opacity: 0.82;
+}
+
+/* ============================================================== legend ==== */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: none;
+}
+
+/* =============================================================== table ==== */
+
+.tablewrap {
+  overflow-x: auto;
+  margin: 0 -14px -14px;
+  padding: 0 14px 14px;
+}
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+table.data th,
+table.data td {
+  padding: 7px 9px;
+  text-align: right;
+  border-bottom: 1px solid var(--gridline);
+  white-space: nowrap;
+}
+
+table.data th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-1);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-align: right;
+  z-index: 1;
+}
+
+table.data th:first-child,
+table.data td:first-child {
+  text-align: left;
+}
+
+table.data th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+table.data th.sortable:hover {
+  color: var(--text-primary);
+}
+
+table.data tbody tr:hover {
+  background: var(--surface-hover);
+}
+
+table.data tbody tr.is-on {
+  background: color-mix(in srgb, var(--series-1) 9%, transparent);
+}
+
+table.data tbody tr.is-on td:first-child {
+  box-shadow: inset 2px 0 0 var(--series-1);
+  font-weight: 650;
+}
+
+.cell-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.cell-vendor {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ============================================================ inspector === */
+
+.inspector {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 2.1;
+  max-height: 340px;
+  overflow: auto;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  word-break: break-word;
+}
+
+/* Alternating steps of one hue: the chips carry position, not magnitude, and a
+   two-step alternation is what makes the boundaries readable. */
+.tok {
+  padding: 2px 1px;
+  border-radius: 3px;
+  white-space: pre-wrap;
+}
+
+.tok--a {
+  background: color-mix(in srgb, var(--series-1) 20%, transparent);
+}
+
+.tok--b {
+  background: color-mix(in srgb, var(--series-1) 9%, transparent);
+}
+
+.tok--ws {
+  background: color-mix(in srgb, var(--series-4) 26%, transparent);
+  color: var(--text-secondary);
+}
+
+/* ============================================================== tooltip === */
+
+.tip {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  max-width: 260px;
+  padding: 8px 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tip__title {
+  font-weight: 650;
+  margin-bottom: 3px;
+}
+
+.tip__row {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.tip__row b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ============================================================== footer === */
+
+.footer {
+  margin-top: 44px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+
+.footer a {
+  color: var(--text-secondary);
+}
+
+/* ============================================================ utilities == */
+
+.muted {
+  color: var(--text-muted);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.empty {
+  padding: 26px 14px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
