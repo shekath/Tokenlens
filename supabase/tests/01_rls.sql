@@ -283,6 +283,67 @@ exception
     raise exception 'FAILED: unexpected % (%)', sqlerrm, sqlstate;
 end $$;
 
+\echo ''
+\echo '== policy helpers are not reachable as REST RPCs =='
+-- Found only by deploying: PostgREST exposes every function in `public`, and
+-- both helpers are SECURITY DEFINER, so in `public` they bypassed RLS and let
+-- anyone with the anon key read any user's tier and saved-estimate count.
+select test_reset();
+
+select assert(
+  not test_is_rpc_reachable('private.current_tier(uuid)', 'anon'),
+  'current_tier is not callable by anon over REST'
+);
+select assert(
+  not test_is_rpc_reachable('private.saved_estimate_count(uuid)', 'anon'),
+  'saved_estimate_count is not callable by anon over REST'
+);
+select assert(
+  not test_is_rpc_reachable('public.handle_new_user()', 'anon'),
+  'the sign-up trigger function is not callable over REST'
+);
+select assert(
+  not test_is_rpc_reachable('public.lock_profile_billing_columns()', 'anon'),
+  'the billing-lock trigger function is not callable over REST'
+);
+select assert(
+  test_is_rpc_reachable('public.get_shared_estimate(text)', 'anon'),
+  'the share-link lookup stays callable, which is its job'
+);
+-- The policies still work, which is the other half of moving them.
+select assert(
+  has_function_privilege('authenticated', 'private.current_tier(uuid)', 'EXECUTE'),
+  'and authenticated can still execute them from inside a policy'
+);
+
+\echo ''
+\echo '== an empty claims string does not break profile updates =='
+-- current_setting(..., true) returns '' rather than NULL when the GUC is set
+-- empty. The first version of the guard only tested for NULL, reached
+-- ''::jsonb and raised, so every UPDATE on profiles in such a session failed.
+select test_reset();
+select set_config('request.jwt.claims', '', false);
+
+do $$
+begin
+  update public.profiles set full_name = 'Still Works'
+   where id = '11111111-1111-1111-1111-111111111111';
+  raise notice '  ok: an empty claims string is treated as no claims, not an error';
+exception when others then
+  raise exception 'FAILED: empty claims raised % (%)', sqlerrm, sqlstate;
+end $$;
+
+do $$
+begin
+  perform set_config('request.jwt.claims', 'not json at all', false);
+  update public.profiles set tier = 'team'
+   where id = '11111111-1111-1111-1111-111111111111';
+  if (select tier from public.profiles where id = '11111111-1111-1111-1111-111111111111') = 'team' then
+    raise exception 'FAILED: unparseable claims were treated as service_role';
+  end if;
+  raise notice '  ok: unparseable claims fail closed - the tier is still locked';
+end $$;
+
 select test_reset();
 \echo ''
 \echo 'All RLS assertions passed.'

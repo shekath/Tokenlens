@@ -82,6 +82,23 @@ begin
 end;
 $$;
 
+/**
+ * PostgREST publishes every function in its exposed schemas (by default just
+ * `public`) at /rest/v1/rpc/<name>. There is no PostgREST here, so this is the
+ * stand-in: it answers "would this function be reachable as an RPC, by this
+ * role?" - schema exposed, and EXECUTE granted.
+ */
+create or replace function test_is_rpc_reachable(fn regprocedure, who text)
+returns boolean
+language sql
+stable
+as $$
+  select
+    (select nspname from pg_namespace n join pg_proc p on p.pronamespace = n.oid
+      where p.oid = fn) = 'public'
+    and has_function_privilege(who, fn, 'EXECUTE');
+$$;
+
 create or replace function test_reset()
 returns void
 language plpgsql

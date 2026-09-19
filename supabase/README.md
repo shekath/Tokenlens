@@ -4,48 +4,57 @@ The app runs without any of this — the token counter and cost dashboard are
 entirely client-side. Follow these steps only when you want accounts, saved
 estimates and paid tiers.
 
-## 1. Database
+## Deployed
 
-Project `iashboyuhcbhsrvkfsuk`. Apply the schema either way:
+Project **Tokenticks Shk** (`iashboyuhcbhsrvkfsuk`), region `ap-northeast-2`,
+PostgreSQL 17. API URL `https://iashboyuhcbhsrvkfsuk.supabase.co`.
+
+Applied and verified against the live project:
+
+- `migrations/0001_init.sql` — three tables, RLS on all of them, six policies,
+  the helper and trigger functions
+- Edge Function `lemon-webhook`, deployed with `verify_jwt` disabled (Lemon
+  Squeezy signs with HMAC, not a Supabase JWT, so the function verifies itself)
+- Supabase's security advisor: 6 findings at first apply, now 2, both
+  accounted for (see below). Performance advisor: clean.
+- All test rows removed afterwards; `auth.users`, `profiles`,
+  `saved_estimates` and `billing_events` are all empty.
+
+### Three bugs the live deployment found
+
+None could surface offline, because each depends on something the local shim
+does not have.
+
+| Bug | Why it only showed up live |
+|---|---|
+| `current_tier()` and `saved_estimate_count()` leaked any user's tier and estimate count to anyone holding the public anon key | PostgREST publishes every function in `public` at `/rest/v1/rpc/`, and both were `SECURITY DEFINER`, so they bypassed RLS. There is no PostgREST in the offline shim. Fixed by moving both to a `private` schema PostgREST does not expose. |
+| Publishing a share link failed with `function gen_random_bytes does not exist` | Supabase installs pgcrypto into `extensions`, not `public`, and the function's `search_path` is pinned to `public`. Locally pgcrypto lands in `public`, so it resolved. Fixed by building the slug from core `gen_random_uuid()` / `encode` / `decode` — no extension, and 128 bits instead of 72. |
+| Every `UPDATE` on `profiles` failed in a session where `request.jwt.claims` was the empty string | `current_setting(..., true)` returns `''`, not `NULL`, so the old NULL-only guard reached `''::jsonb` and raised. The offline suite always set valid claims before touching `profiles`. Fixed, and unparseable claims now fail closed. |
+
+All three are covered by the offline suite now, so they cannot regress.
+
+### The two remaining advisor findings
+
+- `public.get_shared_estimate(text)` is anon-callable **by design** — it is the
+  share-link lookup and returns one row only to a caller holding a 128-bit
+  slug. Supabase's linter flags every anon-callable `SECURITY DEFINER`
+  function; this one is intentional.
+- `public.rls_auto_enable()` is **not from this project**. It backs an event
+  trigger named `ensure_rls` that auto-enables RLS on newly created tables — a
+  useful safety net, left alone deliberately. It returns `event_trigger`, which
+  cannot be invoked as an ordinary function, so the RPC exposure is nominal.
+- `billing_events` has RLS enabled with no policies (INFO). That is the
+  intended configuration: deny-all for everyone except the service role, which
+  bypasses RLS.
+
+## Applying to a fresh project
 
 ```bash
-# From a machine that can reach Supabase:
-./supabase/apply.sh 'postgresql://postgres:<password>@db.iashboyuhcbhsrvkfsuk.supabase.co:5432/postgres'
+./supabase/apply.sh 'postgresql://postgres:<password>@db.<ref>.supabase.co:5432/postgres'
 ```
 
-or paste `migrations/0001_init.sql` into the dashboard's SQL editor. Every
+or paste `migrations/0001_init.sql` into the dashboard SQL editor. Every
 statement is idempotent, so re-running is safe.
-
-`apply.sh` then verifies: the three tables exist, RLS is on for each, the
-policies are present, and `shared_estimates` carries no direct grant to `anon`
-or `authenticated` (access goes through `get_shared_estimate`).
-
-### The MCP server
-
-`.mcp.json` in the repository root registers Supabase's hosted MCP server for
-this project, so a local Claude Code session picks it up and can drive the
-project directly after authenticating.
-
-Note that it cannot be used from a Claude Code **web/cloud** session: that
-sandbox's egress policy denies `mcp.supabase.com`, `supabase.com`,
-`api.supabase.com` and `*.supabase.co` alike, and the Postgres ports (5432,
-6543) are not reachable either. The offline suite below exists precisely so the
-schema can still be exercised there.
-
-It creates `profiles`, `saved_estimates` and `billing_events`, enables row level
-security on all three, and installs the triggers described below.
-
-### What the schema does that the draft SQL in the blueprint did not
-
-| Change | Why |
-|---|---|
-| Free-tier save cap counts through a `SECURITY DEFINER` function | The draft's plain subquery works, but **fails open**: it runs under the table's own SELECT policy, so tightening or dropping that policy silently returns a count of 0 and the cap stops applying — a free account then saves without limit and nothing errors. Counting outside RLS makes the cap independent of how rows are read. |
-| Sharing goes through the `shared_estimates` view | `using (auth.uid() = user_id or is_public = true)` on the base table exposes every column of a shared row, prompt excerpt included. Sharing a cost figure should not publish the prompt. |
-| `lock_profile_billing_columns` trigger | Nothing otherwise stops a client writing its own `tier`. RLS grants no such UPDATE today, but a future policy could, and the mistake would be silent and total. |
-| `billing_events` ledger | The blueprint's webhook called itself idempotent while storing nothing. Lemon Squeezy retries on any non-2xx, so retries are expected. |
-| UPDATE and DELETE policies on `saved_estimates` | Users could otherwise create estimates but never remove them. |
-| `shared_estimates` is not granted to `anon`; access goes through `get_shared_estimate(slug)` | A blanket `grant select` lets anyone holding the anon key run `select * from shared_estimates` and dump every shared row. A share link is meant to be unlisted, and a project title is user-supplied text that may name a client. |
-| `is_public` gated on the Team tier in the UPDATE policy | Sharing is a paid entitlement; hiding the button is not enforcement. |
 
 ### Running the tests
 
