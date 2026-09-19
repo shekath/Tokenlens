@@ -60,10 +60,12 @@ test('the free save cap matches the value the RLS policy enforces', async () => 
     fs.readFileSync('supabase/migrations/0001_init.sql', 'utf8'),
   );
   // If these drift, the UI promises one thing and the database enforces another.
-  assert.ok(
-    sql.includes(`saved_estimate_count(auth.uid()) < ${ENTITLEMENTS.free.maxSavedEstimates}`),
-    'the SQL cap does not match ENTITLEMENTS.free.maxSavedEstimates',
+  // Matched by shape, not exact text: the helper moved schema and auth.uid()
+  // is now wrapped for the query planner, neither of which changes the cap.
+  const cap = new RegExp(
+    `saved_estimate_count\\(.+\\)\\s*<\\s*${ENTITLEMENTS.free.maxSavedEstimates}\\b`,
   );
+  assert.ok(cap.test(sql), 'the SQL cap does not match ENTITLEMENTS.free.maxSavedEstimates');
 });
 
 test('every plan has a price, an audience and highlights', () => {
@@ -118,7 +120,7 @@ test('publishing a share link is enforced as a Team entitlement in SQL, not just
   const fs = await import('node:fs');
   const sql = fs.readFileSync('supabase/migrations/0001_init.sql', 'utf8');
   assert.ok(
-    /is_public = false or public\.current_tier\(auth\.uid\(\)\) = 'team'/.test(sql),
+    /is_public = false\s+or\s+\w+\.current_tier\(.+\)\s*=\s*'team'/.test(sql),
     'the update policy must gate is_public on the Team tier',
   );
   assert.ok(ENTITLEMENTS.team.features.shareLinks, 'and the matrix must agree');
@@ -147,4 +149,25 @@ test('every SECURITY DEFINER function pins its search_path', async () => {
     const name = body.trim().split('(')[0];
     assert.ok(/set search_path = public, pg_temp/.test(body), `${name} does not pin search_path`);
   }
+});
+
+test('policy helpers live outside the PostgREST-exposed schema', async () => {
+  // In `public` these are published at /rest/v1/rpc/ and, being SECURITY
+  // DEFINER, bypass RLS - which leaked every user's tier until it was fixed.
+  const fs = await import('node:fs');
+  const sql = fs.readFileSync('supabase/migrations/0001_init.sql', 'utf8');
+  for (const fn of ['current_tier', 'saved_estimate_count']) {
+    assert.ok(
+      new RegExp(`create or replace function private\\.${fn}\\(`).test(sql),
+      `${fn} must be defined in the private schema`,
+    );
+    assert.ok(
+      !new RegExp(`create or replace function public\\.${fn}\\(`).test(sql),
+      `${fn} must not also be defined in public`,
+    );
+  }
+  assert.ok(
+    /revoke all on function public\.handle_new_user\(\)\s+from public, anon, authenticated/.test(sql),
+    'trigger functions should not be callable by clients',
+  );
 });
