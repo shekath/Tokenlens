@@ -188,8 +188,11 @@ any non-service-role caller regardless of what the policies allow.
   asked for gated content rendered behind `blur-sm`; that is worse than useless —
   the content sits in the DOM for anyone with an element inspector. Locked
   features render a description of what is behind them instead.
-- **The limits that matter are in Postgres.** The free save cap is an RLS policy.
-  The tier is unwritable by clients.
+- **The limits that matter are in Postgres**, and they are tested rather than
+  asserted. `./supabase/tests/run.sh` applies the schema to a throwaway
+  PostgreSQL database and checks tenant isolation, the billing-column lock, the
+  free cap, the Team-only share gate and the sharing view's column list — 22
+  assertions, no Supabase account needed.
 - **A service-role key in `VITE_SUPABASE_ANON_KEY` refuses to start the client**
   with an explanation. It is an easy mistake, it is silent, and it would hand
   every visitor full database access.

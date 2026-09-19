@@ -16,7 +16,7 @@ security on all three, and installs the triggers described below.
 
 | Change | Why |
 |---|---|
-| Free-tier save cap moved into a `SECURITY DEFINER` function | A subquery over `saved_estimates` inside a policy *on* `saved_estimates` makes Postgres re-apply that table's policies to the subquery and abort with `infinite recursion detected in policy for relation`. |
+| Free-tier save cap counts through a `SECURITY DEFINER` function | The draft's plain subquery works, but **fails open**: it runs under the table's own SELECT policy, so tightening or dropping that policy silently returns a count of 0 and the cap stops applying — a free account then saves without limit and nothing errors. Counting outside RLS makes the cap independent of how rows are read. |
 | Sharing goes through the `shared_estimates` view | `using (auth.uid() = user_id or is_public = true)` on the base table exposes every column of a shared row, prompt excerpt included. Sharing a cost figure should not publish the prompt. |
 | `lock_profile_billing_columns` trigger | Nothing otherwise stops a client writing its own `tier`. RLS grants no such UPDATE today, but a future policy could, and the mistake would be silent and total. |
 | `billing_events` ledger | The blueprint's webhook called itself idempotent while storing nothing. Lemon Squeezy retries on any non-2xx, so retries are expected. |
@@ -24,9 +24,31 @@ security on all three, and installs the triggers described below.
 | `shared_estimates` is not granted to `anon`; access goes through `get_shared_estimate(slug)` | A blanket `grant select` lets anyone holding the anon key run `select * from shared_estimates` and dump every shared row. A share link is meant to be unlisted, and a project title is user-supplied text that may name a client. |
 | `is_public` gated on the Team tier in the UPDATE policy | Sharing is a paid entitlement; hiding the button is not enforcement. |
 
-### Verifying RLS
+### Running the tests
 
-After running the migration, confirm the isolation holds:
+```bash
+./supabase/tests/run.sh          # needs any PostgreSQL 14+, not Supabase itself
+```
+
+`tests/00_supabase_shim.sql` supplies the pieces the migration leans on — the
+`auth` schema, `auth.uid()`, and the `anon` / `authenticated` / `service_role`
+roles — so the schema can be applied and exercised against a plain PostgreSQL
+instance. `tests/01_rls.sql` then asserts the security properties:
+
+- a profile row is created on sign-up, on the free tier;
+- one user cannot read another's estimates or profile;
+- a client's `UPDATE ... SET tier` is accepted but reverted by the trigger,
+  while a display-name change still lands;
+- the service role is exempt, as the webhook needs;
+- the free cap admits three saves and refuses the fourth; Pro is uncapped;
+- Pro cannot publish a share link; Team can, and a slug is minted;
+- `anon` cannot enumerate `shared_estimates`, can fetch exactly one row when it
+  holds the slug, and the view exposes no prompt text, metadata or owner id;
+- the draft cap fails open when the SELECT policy is dropped; this one does not.
+
+### Verifying against a live project
+
+After running the migration on a real project, the same checks by hand:
 
 ```sql
 -- As user A, with user B's id substituted:

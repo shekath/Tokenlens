@@ -39,6 +39,22 @@ jobs:
         run: npm install
       - name: Build
         run: npm run build
+        env:
+          # Supplied from repository Variables (Settings -> Secrets and
+          # variables -> Actions -> Variables). All of these are public by
+          # design: Vite inlines VITE_ values into the browser bundle, and the
+          # Supabase anon key is meant to be public because RLS is what
+          # protects the data. Never put the service-role key here.
+          #
+          # When they are unset the build still succeeds and the site runs in
+          # backend-free mode: the token counter and cost dashboard work, and
+          # accounts and paid features report as unavailable.
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_LEMON_CHECKOUT_URL: ${{ vars.VITE_LEMON_CHECKOUT_URL }}
+          VITE_LEMON_VARIANT_PRO_MONTHLY: ${{ vars.VITE_LEMON_VARIANT_PRO_MONTHLY }}
+          VITE_LEMON_VARIANT_PRO_ANNUAL: ${{ vars.VITE_LEMON_VARIANT_PRO_ANNUAL }}
+          VITE_LEMON_VARIANT_TEAM_MONTHLY: ${{ vars.VITE_LEMON_VARIANT_TEAM_MONTHLY }}
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

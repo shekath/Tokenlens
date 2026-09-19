@@ -3,11 +3,23 @@
 --
 -- Departures from the blueprint's draft SQL, each for a concrete reason:
 --
---  1. The free-tier save cap cannot be written as a subquery over
---     saved_estimates inside a policy ON saved_estimates. Postgres re-applies
---     the table's own policies to that subquery and aborts with "infinite
---     recursion detected in policy for relation". The count is moved into a
---     SECURITY DEFINER function, which runs outside RLS.
+--  1. The free-tier save cap counts through a SECURITY DEFINER function so it
+--     runs outside RLS.
+--
+--     The draft counted with a plain subquery over saved_estimates inside a
+--     policy on saved_estimates. That works, but it fails OPEN: the subquery
+--     is evaluated under the table's own SELECT policy, so the count sees only
+--     the rows that policy exposes. Tighten or drop the SELECT policy later
+--     and the count silently returns 0, the cap stops applying, and a free
+--     account saves without limit -- with no error anywhere. Demonstrated in
+--     supabase/tests/01_rls.sql, which drops the SELECT policy and shows the
+--     draft admitting a fourth row while this version still refuses.
+--
+--     (An earlier revision of this comment claimed the draft aborts with
+--     "infinite recursion detected in policy for relation". That is wrong, and
+--     was not checked before it was written. Postgres recurses only when the
+--     SELECT policy itself references the table; here it is a plain column
+--     comparison, so the draft runs fine.)
 --
 --  2. `using (auth.uid() = user_id or is_public = true)` on the base table
 --     exposes every column of a shared row, including the prompt preview. A
