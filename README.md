@@ -1,15 +1,26 @@
 # TokenTicks
 
-Paste a prompt, see what it costs — on Claude, GPT, Gemini, Grok, DeepSeek, Mistral,
-Llama, Command and Qwen, side by side.
+**AI FinOps and prompt intelligence.** Paste a prompt, see what it costs across
+~30 models — then find out whether caching pays, what the fat in your prompt is
+worth, what a dataset will cost before you run it, and hand a client a PDF they
+can sign off.
 
-TokenTicks is a single-page dashboard that tokenises whatever you paste, prices it
-against ~30 models, and shows the metrics that explain *why* the number is what it
-is: token length distribution, character composition, repetition, formatting
-overhead, context-window pressure, and what caching or a batch endpoint would
-actually save you.
+The token counter is un-gated and needs no account: paste, count, compare, leave.
+Paid tiers add the operational tooling around it.
 
-Everything runs in the browser. Your prompt is never uploaded.
+| | Hobby (free) | Pro ($12/mo, $99/yr) | Team ($39/mo) |
+|---|---|---|---|
+| Model coverage | Top 5 foundational | All 30+ | All + custom rate cards |
+| Caching maths | Baseline uncached | Break-even & ROI simulator | TTL lifecycle, multi-turn |
+| Batch ingestion | Single paste | CSV / JSONL, 10k rows | Unlimited |
+| Optimisation | Character & word counts | Token Trimmer linter | Team-wide rules |
+| Exports | Copy as Markdown | Branded PDF + CSV | White-label + share links |
+| Saved estimates | 3 | Unlimited | Unlimited |
+
+Everything computes in the browser. Prompts are never uploaded — not by the free
+dashboard, not by the batch forecaster, and not by a signed-in account (a saved
+estimate stores token counts and costs, plus an optional 280-character excerpt;
+never the prompt).
 
 ## Running it
 
@@ -21,11 +32,24 @@ npm run dev        # http://localhost:5173
 ```bash
 npm run build      # production bundle into dist/
 npm run preview    # serve the built bundle on :4173
-npm test           # 61 unit tests: cost math, tokenisation, metrics, formatting, scales
+npm test           # 121 unit tests: cost, tokenisation, metrics, entitlements, caching, trimmer, batch
 npm run visual-check   # layout/overflow checks in a real browser (needs `npm run preview` running)
 ```
 
-`dist/` is a static bundle with no backend — host it anywhere that serves files.
+`dist/` is a static bundle. **It runs with no backend at all**: accounts and paid
+features report as unavailable and every local calculation still works, which is
+how the GitHub Pages deployment runs today.
+
+To enable accounts, billing and saved estimates, copy `.env.example` to `.env`
+and follow [`supabase/README.md`](supabase/README.md).
+
+### Previewing the paid tiers
+
+`?preview=pro` or `?preview=team` unlocks the paid tabs locally and raises a
+banner saying so. It grants nothing real: every paid feature here computes in the
+browser, so the gate was always a purchasing prompt rather than a lock, and the
+limits that matter are enforced in Postgres against the signed-in user's actual
+profile row.
 
 ## How the numbers are produced
 
@@ -80,21 +104,99 @@ can see which one is worth its complexity on *your* prompt rather than in genera
 Prices move. Verify against the vendor's pricing page before you budget against
 anything here.
 
-## What's on the dashboard
+## What's in it
 
-- **Headline** — token count, cost per call, projected monthly spend, and what the
-  current assumptions are saving versus flat billing.
-- **Cost and tokens per model** — the same text is a different number of tokens on
-  every vendor's vocabulary, so cost rankings and token rankings do not always agree.
-- **Where the money goes** — per-call split across cached prefix, fresh input and output.
-- **Context windows** — how full each model's window is, and how much room is left for
-  history, tools, retrieved documents and the response.
-- **Prompt anatomy** — token length distribution, character composition, most-repeated
-  tokens, vocabulary ratio, formatting overhead, bytes per token.
-- **Token by token** — the actual BPE boundaries drawn on your prompt, with
-  whitespace-heavy tokens highlighted. Usually the fastest way to see where a prompt
-  is spending.
-- **Every model** — the full registry, sortable on any column.
+### Analyse — free, un-gated
+
+Token count, per-call cost, projected monthly spend, context-window pressure,
+token length distribution, character composition, repeated tokens, formatting
+overhead, and a token-by-token inspector that draws the real BPE boundaries on
+your prompt.
+
+### Cache ROI — Pro
+
+Writing to a prompt cache costs 1.25× the base rate and reading costs a tenth, so
+whether caching pays depends on the hit rate. Setting the two input costs equal
+gives the break-even directly:
+
+```
+h* = (P_write − P_base) / (P_write − P_read)
+```
+
+At Anthropic's published multipliers that is `0.25 / 1.15` = **21.7%** — below
+which caching is a net loss. It depends only on the rates, not on volume or
+prompt size, which is why it is stated as a headline number rather than buried in
+a chart. The simulator plots cost against hit rate with the crossing marked, and
+scales the same shape from 100 to 1,000,000 invocations.
+
+### Trimmer — Pro
+
+Eight rules for the ceremony that accumulates in production prompts: politeness,
+role preambles, hedges, verbose connectives, duplicated instructions, decorative
+markdown, blank-line runs, trailing whitespace.
+
+Each rule's saving is **measured, not estimated** — the rule is applied on its own
+and the result re-tokenised, so the figure beside it is the real token delta. A
+rewrite can occasionally cost tokens by splitting a word the vocabulary had
+whole, and the tool says so rather than assuming character count is a proxy.
+
+Rules are individually toggleable and split into "safe to remove" and "read
+before accepting". Nothing touches a number, a proper noun, a constraint or a
+negation.
+
+### Batch — Pro
+
+Drop in a CSV, JSONL or NDJSON file, pick the prompt column (it guesses), and get
+the run cost across every candidate model, including batch-endpoint pricing.
+Parsed in the browser — the point of the tool is pricing customer prompts, and
+uploading them to do that would be a worse promise.
+
+### Proposal — Pro
+
+The current comparison as a branded PDF: recommended model, monthly cost per
+model with and without caching, and the assumptions behind both. Rendered
+locally with jsPDF.
+
+### Saved — account required
+
+Named estimates, with the free tier capped at 3 by a database policy rather than
+a client check. Team can mint share links, which expose the project title, model
+and cost only.
+
+## Architecture
+
+```
+Browser (Vite + React)          Supabase                    Lemon Squeezy
+─────────────────────           ────────                    ─────────────
+tokenisation, costing,          profiles  ◄── service ──┐   checkout
+caching maths, linting,         saved_estimates  role   │   webhooks ──┐
+batch parsing, PDF              billing_events          │              │
+      │                               ▲                 └── Edge Function
+      └────── anon key, RLS ──────────┘                     (HMAC verify,
+                                                             idempotent)
+```
+
+The client never writes its own tier. `profiles.tier` is written only by the
+webhook through the service role; RLS grants the user SELECT on their own profile
+and UPDATE on their display name, and a trigger reverts the billing columns for
+any non-service-role caller regardless of what the policies allow.
+
+### Security posture
+
+- **Client-side gating is a purchasing prompt, not a lock.** Every paid
+  calculation runs in the browser, so it could not be otherwise. The blueprint
+  asked for gated content rendered behind `blur-sm`; that is worse than useless —
+  the content sits in the DOM for anyone with an element inspector. Locked
+  features render a description of what is behind them instead.
+- **The limits that matter are in Postgres.** The free save cap is an RLS policy.
+  The tier is unwritable by clients.
+- **A service-role key in `VITE_SUPABASE_ANON_KEY` refuses to start the client**
+  with an explanation. It is an easy mistake, it is silent, and it would hand
+  every visitor full database access.
+- **Sharing goes through a view**, so the column list is the security boundary and
+  a shared cost figure cannot leak the prompt or the owner.
+- **The webhook verifies HMAC over raw bytes**, rejects malformed signatures
+  before comparison, and claims each delivery in a ledger so retries are no-ops.
 
 ## Design notes
 
@@ -118,29 +220,45 @@ anything here.
 ```
 src/
   lib/
-    models.ts      model registry: context windows, rates, tokenizer family
-    tokenize.ts    BPE loading, counting, per-family estimate factors
-    metrics.ts     text and token statistics
-    cost.ts        per-call, cached, batch and projected cost
-    scale.ts       axis ticks, bar geometry, label fitting
-    format.ts      number, currency and percentage formatting
-    samples.ts     example prompts
-    useTheme.ts    theme choice and persisted state
-    useEncoders.ts post-paint tokenizer loading
-  components/      composer, assumptions, charts, tables, inspector
-  styles/          design tokens, then everything else
-tests/             unit tests (node:test, run against the TypeScript directly)
-scripts/           browser-based layout checks
+    models.ts        model registry: context windows, rates, tokenizer family
+    tokenize.ts      BPE loading, counting, per-family estimate factors
+    metrics.ts       text and token statistics
+    cost.ts          per-call, cached, batch and projected cost
+    cacheSim.ts      break-even maths for prompt caching
+    trimmer.ts       the prompt linter's rules and measurement
+    batch.ts         CSV / JSONL parsing and dataset forecasting
+    proposal.ts      PDF generation (jsPDF, dynamically imported)
+    entitlements.ts  the pricing matrix — every gate reads from here
+    supabase.ts      typed client, optional, with a service-role guardrail
+    auth.ts          session state
+    subscription.ts  plan, entitlements and checkout
+    estimates.ts     saved-estimate CRUD
+    scale.ts         axis ticks, bar geometry, label fitting
+    format.ts        number, currency and percentage formatting
+  components/        composer, tabs, charts, tables, dialogs, paid features
+  styles/            design tokens, then everything else
+supabase/
+  migrations/        schema, RLS policies, triggers
+  functions/         the Lemon Squeezy webhook
+tests/               unit tests (node:test, run against the TypeScript directly)
+scripts/             browser-based layout checks
 ```
 
 ### Performance
 
-The BPE rank tables are ~2.4MB and ~1.2MB. Both are dynamic imports: the shell ships
-at about 86KB gzipped and paints immediately, the primary encoder follows, and the
-secondary one loads in the background afterwards — the two legacy OpenAI counts
-upgrade from estimate to exact when it lands. Tokenising is deferred through
-`useDeferredValue`, so typing stays responsive on a long paste and the previous
-numbers stay on screen at reduced opacity while the next ones compute.
+The BPE rank tables are ~2.4MB and ~1.2MB. Both are dynamic imports: the shell
+ships at about 96KB gzipped and paints immediately, the primary encoder follows,
+and the secondary one loads in the background afterwards — the two legacy OpenAI
+counts upgrade from estimate to exact when it lands.
+
+The paid tabs are `React.lazy` chunks, and jsPDF is imported inside the export
+handler rather than at module scope. jsPDF pulls in html2canvas and dompurify for
+its HTML renderer — about 390KB raw — which would otherwise land in the main
+chunk for every visitor who never exports a PDF.
+
+Tokenising is deferred through `useDeferredValue`, so typing stays responsive on
+a long paste and the previous numbers stay on screen at reduced opacity while the
+next ones compute.
 
 ## Adding a model
 

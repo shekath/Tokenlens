@@ -13,6 +13,9 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
 const URL = process.env.PREVIEW_URL ?? 'http://localhost:4173/';
+// ?preview=team unlocks the paid tabs locally so the layout of every one of them
+// is checked, not just the free dashboard.
+const withPreview = (u) => u + (u.includes('?') ? '&' : '?') + 'preview=team';
 const OUT = process.argv[2];
 if (OUT) mkdirSync(OUT, { recursive: true });
 
@@ -47,12 +50,48 @@ for (const cfg of CONFIGS) {
     if (m.type() === 'error') problems.push(`${cfg.name}: console error - ${m.text()}`);
   });
 
-  await page.goto(URL, { waitUntil: 'networkidle' });
+  await page.goto(withPreview(URL), { waitUntil: 'networkidle' });
   await page.fill('#prompt', SAMPLE);
   // Exercise the caching sliders so the three-way cost split renders too.
   await page.locator('#cached').fill('70');
   await page.locator('#hit').fill('85');
   await page.waitForTimeout(1100);
+
+  // Walk every tab: a gated tab that only renders its paywall would otherwise
+  // never have its real layout measured.
+  const tabs = await page.getByRole('tab').allTextContents();
+  const measure = async (where) => {
+    const r = await page.evaluate(() => {
+      const doc = document.documentElement;
+      const spill = [];
+      for (const svg of document.querySelectorAll('svg.chart')) {
+        const b = svg.getBoundingClientRect();
+        for (const t of svg.querySelectorAll('text')) {
+          const tb = t.getBoundingClientRect();
+          if (tb.width && (tb.right > b.right + 1 || tb.left < b.left - 1)) spill.push(t.textContent);
+        }
+      }
+      return { scrollWidth: doc.scrollWidth, clientWidth: doc.clientWidth, spill };
+    });
+    if (r.scrollWidth > r.clientWidth + 1) {
+      problems.push(`${cfg.name} / ${where}: horizontal page scroll (${r.scrollWidth} > ${r.clientWidth})`);
+    }
+    if (r.spill.length) {
+      problems.push(`${cfg.name} / ${where}: chart labels outside their SVG - ${r.spill.slice(0, 4).join(', ')}`);
+    }
+  };
+
+  for (const name of tabs) {
+    await page.getByRole('tab', { name, exact: true }).click();
+    await page.waitForTimeout(650);
+    await measure(name.trim());
+    if (OUT) {
+      const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      await page.screenshot({ path: `${OUT}/${cfg.name}-${slug}.png`, fullPage: true });
+    }
+  }
+  await page.getByRole('tab', { name: tabs[0], exact: true }).click();
+  await page.waitForTimeout(400);
 
   const report = await page.evaluate(() => {
     const doc = document.documentElement;
@@ -78,7 +117,6 @@ for (const cfg of CONFIGS) {
     problems.push(`${cfg.name}: chart labels outside their SVG - ${report.spill.slice(0, 5).join(', ')}`);
   }
 
-  if (OUT) await page.screenshot({ path: `${OUT}/${cfg.name}.png`, fullPage: true });
   console.log(`${cfg.name.padEnd(14)} ${cfg.width}x${cfg.height}  ${problems.length ? 'see below' : 'ok'}`);
   await ctx.close();
 }

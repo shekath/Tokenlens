@@ -57,3 +57,36 @@ export function visibleToken(text: string): string {
     .replace(/\r/g, '␍')
     .replace(/ /g, '·');
 }
+
+/**
+ * A single money format for a whole set of axis ticks.
+ *
+ * `usd` picks its precision per value, which is right for a standalone figure and
+ * wrong for an axis: a tick set then reads "$800.00, $1,000", mixing two formats
+ * in one column. This derives one precision from the tick step and applies it to
+ * every label.
+ */
+export function usdAxis(ticks: number[]): (v: number) => string {
+  const step =
+    ticks.length > 1 ? Math.abs(ticks[1]! - ticks[0]!) : Math.abs(ticks[0] ?? 1) || 1;
+
+  if (step >= 1_000) {
+    // `compact` switches unit at 10,000, which would put "$5,000" next to
+    // "$10.0K" on one axis. Choose the unit once, from the largest tick, and
+    // apply it to all of them.
+    const max = Math.max(...ticks.map((t) => Math.abs(t)));
+    const [divisor, suffix] =
+      max >= 1e9 ? [1e9, 'B'] : max >= 1e6 ? [1e6, 'M'] : max >= 1e4 ? [1e3, 'K'] : [1, ''];
+    if (divisor === 1) {
+      return (v) => (v === 0 ? '$0' : `$${int.format(Math.round(v))}`);
+    }
+    const decimals = step / divisor < 1 ? 1 : 0;
+    return (v) => (v === 0 ? '$0' : `$${(v / divisor).toFixed(decimals)}${suffix}`);
+  }
+  if (step >= 1) {
+    return (v) => (v === 0 ? '$0' : `$${int.format(Math.round(v))}`);
+  }
+  // Below a dollar, use just enough decimals to tell adjacent ticks apart.
+  const decimals = Math.min(8, Math.max(2, Math.ceil(-Math.log10(step)) + 1));
+  return (v) => (v === 0 ? '$0' : `$${v.toFixed(decimals)}`);
+}

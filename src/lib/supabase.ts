@@ -1,0 +1,167 @@
+/**
+ * Supabase client.
+ *
+ * The backend is optional by design. The blueprint's whole acquisition argument is
+ * that the token counter is un-gated and needs no account, so the app has to run
+ * with no environment at all - which is also how it runs on the current GitHub
+ * Pages deployment. When the two public variables are absent, `supabase` is null,
+ * accounts and Pro features show as unavailable, and every local calculation still
+ * works. Nothing here throws on a missing backend.
+ */
+
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SubscriptionStatus, Tier } from './entitlements';
+
+/**
+ * Declared with `type`, not `interface`, on purpose: Supabase requires each Row
+ * to satisfy Record<string, unknown>, and only a type alias gets the implicit
+ * index signature that satisfies it. As an interface the constraint fails and
+ * every query in the app silently infers `never`.
+ */
+type ProfileRow = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  tier: Tier;
+  subscription_status: SubscriptionStatus;
+  lemon_customer_id: string | null;
+  lemon_subscription_id: string | null;
+  current_period_end: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type EstimateRow = {
+  id: string;
+  user_id: string;
+  project_title: string;
+  model_id: string;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  estimated_cost_usd: number;
+  prompt_metadata: Record<string, unknown>;
+  prompt_preview: string | null;
+  is_public: boolean;
+  share_slug: string | null;
+  created_at: string;
+};
+
+type SharedEstimateRow = {
+  share_slug: string;
+  project_title: string;
+  model_id: string;
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens: number;
+  estimated_cost_usd: number;
+  created_at: string;
+};
+
+/**
+ * Hand-written schema types.
+ *
+ * The billing columns appear in Row but not in Update: the webhook is the only
+ * writer, and a client that tries to set its own tier is rejected by RLS and by
+ * a trigger anyway. Leaving them out of the type means that mistake does not
+ * compile either.
+ */
+export interface Database {
+  public: {
+    Tables: {
+      profiles: {
+        Row: ProfileRow;
+        Insert: Pick<ProfileRow, 'id' | 'email'> & Partial<Pick<ProfileRow, 'full_name'>>;
+        Update: Partial<Pick<ProfileRow, 'full_name'>>;
+        Relationships: [];
+      };
+      saved_estimates: {
+        Row: EstimateRow;
+        Insert: Omit<EstimateRow, 'id' | 'created_at' | 'share_slug'> &
+          Partial<Pick<EstimateRow, 'id' | 'created_at' | 'share_slug'>>;
+        Update: Partial<Pick<EstimateRow, 'project_title' | 'is_public'>>;
+        Relationships: [];
+      };
+    };
+    Views: {
+      shared_estimates: {
+        Row: SharedEstimateRow;
+        Relationships: [];
+      };
+    };
+    // Must satisfy Record<string, GenericFunction>; `never` fails that constraint
+    // and silently collapses every row type in the schema to `never`.
+    Functions: {
+      get_shared_estimate: {
+        Args: { slug: string };
+        Returns: SharedEstimateRow[];
+      };
+    };
+    Enums: {
+      user_tier: Tier;
+      sub_status: SubscriptionStatus;
+    };
+    CompositeTypes: Record<never, never>;
+  };
+}
+
+const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+/**
+ * A Supabase key is a JWT whose payload carries its role. The service-role key
+ * bypasses every RLS policy, so shipping one in a `VITE_` variable - which Vite
+ * inlines into the public bundle - would hand every visitor full database access.
+ * It is an easy mistake to make when copying keys from the dashboard, and it is
+ * silent, so refuse to start the client and say why.
+ */
+function assertNotServiceRole(key: string): void {
+  try {
+    const payload = key.split('.')[1];
+    if (!payload) return;
+    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+    if (decoded?.role === 'service_role') {
+      throw new Error(
+        'VITE_SUPABASE_ANON_KEY holds a service_role key. That key bypasses row ' +
+          'level security and Vite inlines it into the public bundle. Use the anon ' +
+          '(publishable) key here and keep the service-role key server-side only.',
+      );
+    }
+  } catch (err) {
+    // A key that is not a decodable JWT is a different problem; let the client
+    // surface it. Only re-throw our own refusal.
+    if (err instanceof Error && err.message.startsWith('VITE_SUPABASE_ANON_KEY')) throw err;
+  }
+}
+
+function build(): SupabaseClient<Database> | null {
+  if (!url || !anonKey) return null;
+  assertNotServiceRole(anonKey);
+  return createClient<Database>(url, anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce',
+    },
+  });
+}
+
+export const supabase = build();
+
+/** True when the app has a backend to talk to. */
+export const hasBackend = supabase !== null;
+
+/** Human-readable reason the backend is unavailable, for the UI to show. */
+export const backendStatus: string = hasBackend
+  ? 'connected'
+  : 'Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable accounts and Pro features.';
+
+/** Reads a Lemon Squeezy variant id from the environment at call time. */
+export function variantId(envKey: string | undefined): string | null {
+  if (!envKey) return null;
+  const v = (import.meta.env as Record<string, string | undefined>)[envKey];
+  return v && v.length > 0 ? v : null;
+}
+
+export const checkoutBase = import.meta.env.VITE_LEMON_CHECKOUT_URL as string | undefined;

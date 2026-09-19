@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import {
   DEFAULT_COMPARE_IDS,
   DEFAULT_MODEL_ID,
@@ -23,27 +23,40 @@ import {
   callCost,
   effectiveCost,
   project,
-  utilization,
   type CostAssumptions,
   type Severity,
 } from './lib/cost';
-import { compact, num, pct, ratio, usd, visibleToken } from './lib/format';
+import { compact, num, pct, ratio, usd } from './lib/format';
 import { useTheme, usePersisted } from './lib/useTheme';
+import { useAuth } from './lib/auth';
+import { useSubscription } from './lib/subscription';
+import { hasBackend } from './lib/supabase';
+import type { Feature, Plan } from './lib/entitlements';
+import type { NewEstimate } from './lib/estimates';
+import type { ProposalLine } from './lib/proposal';
+
 import { Composer } from './components/Composer';
 import { Assumptions } from './components/Assumptions';
-import { ModelTable, type ModelRow } from './components/ModelTable';
-import { TokenInspector } from './components/TokenInspector';
-import { BarRows, Histogram, StackedBar, type BarDatum } from './components/charts';
-import {
-  ChartCard,
-  ExactBadge,
-  Legend,
-  Meter,
-  SeverityIcon,
-  StatTile,
-  TipRow,
-  type LegendItem,
-} from './components/primitives';
+import { AnalyseTab } from './components/AnalyseTab';
+const CacheSimulator = lazy(() =>
+  import('./components/CacheSimulator').then((m) => ({ default: m.CacheSimulator })),
+);
+const TokenTrimmer = lazy(() =>
+  import('./components/TokenTrimmer').then((m) => ({ default: m.TokenTrimmer })),
+);
+const BatchForecaster = lazy(() =>
+  import('./components/BatchForecaster').then((m) => ({ default: m.BatchForecaster })),
+);
+const ProposalBuilder = lazy(() =>
+  import('./components/ProposalBuilder').then((m) => ({ default: m.ProposalBuilder })),
+);
+import { SavedEstimates } from './components/SavedEstimates';
+import { ProGatekeeper } from './components/ProGatekeeper';
+import { AuthDialog } from './components/AuthDialog';
+import { PricingDialog } from './components/PricingDialog';
+import type { ModelRow } from './components/ModelTable';
+import type { BarDatum } from './components/charts';
+import { SeverityIcon, TipRow, type LegendItem } from './components/primitives';
 
 const COMPOSITION_COLORS = [
   'var(--series-1)',
@@ -53,7 +66,81 @@ const COMPOSITION_COLORS = [
   'var(--series-5)',
 ];
 
-type View = 'chart' | 'table';
+type TabId = 'analyse' | 'cache' | 'trimmer' | 'batch' | 'proposal' | 'saved';
+
+interface TabDef {
+  id: TabId;
+  label: string;
+  /** Feature that unlocks it; undefined means always open. */
+  feature?: Feature;
+  /** Shown when locked, in place of the real thing. */
+  gate?: { title: string; pitch: string; bullets: string[] };
+}
+
+const TABS: TabDef[] = [
+  { id: 'analyse', label: 'Analyse' },
+  {
+    id: 'cache',
+    label: 'Cache ROI',
+    feature: 'cacheSimulator',
+    gate: {
+      title: 'Find out whether prompt caching is worth it',
+      pitch:
+        'Writing to a prompt cache costs 1.25× the base rate; reading from it costs a tenth. Whether that trade pays depends on your hit rate, and the break-even point is not where most people guess.',
+      bullets: [
+        'Break-even hit rate for any model that publishes cache rates',
+        'How many calls a cache entry must serve before it pays for itself',
+        'Cost curves from 100 to 1,000,000 invocations',
+      ],
+    },
+  },
+  {
+    id: 'trimmer',
+    label: 'Trimmer',
+    feature: 'trimmer',
+    gate: {
+      title: 'Cut the tokens you are paying for by accident',
+      pitch:
+        'Production prompts accumulate politeness, hedges, duplicated rules and decorative markdown. The Trimmer finds them and prices the waste at your real call volume.',
+      bullets: [
+        'Eight rules, each measured by re-tokenising rather than guessed',
+        'A cleaned prompt you can read, copy or apply',
+        'What the saving is worth at 100k and 1M calls',
+      ],
+    },
+  },
+  {
+    id: 'batch',
+    label: 'Batch',
+    feature: 'batchForecast',
+    gate: {
+      title: 'Price a dataset before you run it',
+      pitch:
+        'Drop in the CSV or JSONL you are about to push through a pipeline and see the bill across every candidate model first.',
+      bullets: [
+        'CSV, JSONL and NDJSON, parsed in your browser and never uploaded',
+        'Up to 10,000 rows per run on Pro',
+        'Side-by-side run cost, including batch-endpoint pricing',
+      ],
+    },
+  },
+  {
+    id: 'proposal',
+    label: 'Proposal',
+    feature: 'pdfProposal',
+    gate: {
+      title: 'Hand a client a number they can sign off',
+      pitch:
+        'Turn the current comparison into a branded PDF: projected monthly burn, the model you recommend, and the assumptions behind both.',
+      bullets: [
+        'Your company and client details on the cover',
+        'Every model you are comparing, with and without caching',
+        'Rendered locally — the project never leaves your machine',
+      ],
+    },
+  },
+  { id: 'saved', label: 'Saved' },
+];
 
 export default function App() {
   const [theme, setTheme] = useTheme();
@@ -64,8 +151,7 @@ export default function App() {
   const [assumptions, setAssumptions] = usePersisted<CostAssumptions>(
     'tokenticks.assumptions',
     DEFAULT_ASSUMPTIONS,
-    (v) =>
-      v && typeof v === 'object' ? { ...DEFAULT_ASSUMPTIONS, ...(v as CostAssumptions) } : null,
+    (v) => (v && typeof v === 'object' ? { ...DEFAULT_ASSUMPTIONS, ...(v as CostAssumptions) } : null),
   );
   const [compareIds, setCompareIds] = usePersisted<string[]>(
     'tokenticks.compare',
@@ -73,62 +159,73 @@ export default function App() {
     (v) => (Array.isArray(v) ? v.filter((id) => typeof id === 'string' && MODELS_BY_ID[id]) : null),
   );
 
-  const [costView, setCostView] = useState<View>('chart');
-  const [tokenView, setTokenView] = useState<View>('chart');
-  const [lengthView, setLengthView] = useState<View>('chart');
-  const [compView, setCompView] = useState<View>('chart');
+  const [tab, setTab] = useState<TabId>('analyse');
+  const [authOpen, setAuthOpen] = useState(false);
+  const [pricingOpen, setPricingOpen] = useState(false);
 
-  // Tokenising a long paste is the one expensive step; deferring it keeps typing
-  // responsive and lets React show the previous numbers while the next land.
+  const auth = useAuth();
+  const sub = useSubscription(auth.user);
+  const ent = sub.entitlements;
+
+  // Free accounts price a shortlist; everyone else sees the whole registry.
+  const availableModels = useMemo(
+    () =>
+      ent.modelAllowlist === null
+        ? MODELS
+        : MODELS.filter((m) => ent.modelAllowlist!.includes(m.id)),
+    [ent.modelAllowlist],
+  );
+
   const deferredText = useDeferredValue(text);
   const stale = deferredText !== text;
 
-  const model: Model = MODELS_BY_ID[modelId] ?? MODELS_BY_ID[DEFAULT_MODEL_ID]!;
-
   const enc = useEncoders();
-  // `enc.secondary` is in the dependency list because the cl100k count only
-  // becomes available on the render after that chunk lands.
   const base = useMemo(
     () => (enc.ready ? encodeBase(deferredText) : EMPTY_BASE),
     [deferredText, enc.ready, enc.secondary],
   );
+
+  // A locked model in storage must not strand the dashboard on a blank screen.
+  const model: Model =
+    availableModels.find((m) => m.id === modelId) ??
+    availableModels[0] ??
+    MODELS_BY_ID[DEFAULT_MODEL_ID]!;
+
   const tm = useMemo(() => textMetrics(deferredText), [deferredText]);
   const tokens = useMemo(() => countFor(model, base), [model, base]);
   const tok = useMemo(
     () => tokenMetrics(base, tokens, tm.words, tm.chars),
     [base, tokens, tm.words, tm.chars],
   );
-
-  const family = FAMILY_INFO[model.tokenizer];
   const exact = isExact(model, base);
-  const cost = useMemo(
-    () => effectiveCost(model, tokens, assumptions),
-    [model, tokens, assumptions],
-  );
+
+  const cost = useMemo(() => effectiveCost(model, tokens, assumptions), [model, tokens, assumptions]);
   const naive = useMemo(
     () => callCost(model, tokens, assumptions.outputTokens),
     [model, tokens, assumptions.outputTokens],
   );
-  const proj = useMemo(() => project(cost.total, assumptions.callsPerDay), [cost, assumptions.callsPerDay]);
-  const util = utilization(tokens, model.context);
+  const proj = useMemo(
+    () => project(cost.total, assumptions.callsPerDay),
+    [cost, assumptions.callsPerDay],
+  );
 
   const compared = useMemo(
-    () => compareIds.map((id) => MODELS_BY_ID[id]).filter((m): m is Model => Boolean(m)),
-    [compareIds],
+    () =>
+      compareIds
+        .map((id) => MODELS_BY_ID[id])
+        .filter((m): m is Model => Boolean(m) && availableModels.some((a) => a.id === m!.id)),
+    [compareIds, availableModels],
   );
 
   const rows: ModelRow[] = useMemo(
     () =>
-      MODELS.map((m) => {
+      availableModels.map((m) => {
         const t = countFor(m, base);
         return { model: m, tokens: t, cost: effectiveCost(m, t, assumptions) };
       }),
-    [base, assumptions],
+    [base, assumptions, availableModels],
   );
-  const rowsById = useMemo(
-    () => Object.fromEntries(rows.map((r) => [r.model.id, r])),
-    [rows],
-  );
+  const rowsById = useMemo(() => Object.fromEntries(rows.map((r) => [r.model.id, r])), [rows]);
 
   const costBars: BarDatum[] = useMemo(
     () =>
@@ -146,7 +243,10 @@ export default function App() {
                 <TipRow label="Input" value={usd(r.cost.input)} />
                 <TipRow label="Output" value={usd(r.cost.output)} />
                 <TipRow label="Per call" value={usd(r.cost.total)} />
-                <TipRow label={`At ${compact(assumptions.callsPerDay)}/day`} value={usd(r.cost.total * assumptions.callsPerDay)} />
+                <TipRow
+                  label={`At ${compact(assumptions.callsPerDay)}/day`}
+                  value={usd(r.cost.total * assumptions.callsPerDay)}
+                />
               </>
             ),
           } satisfies BarDatum;
@@ -199,10 +299,64 @@ export default function App() {
   }));
 
   const empty = tokens === 0;
-
-  // Savings the current assumptions are actually buying, versus the same call
-  // billed flat. Reported as a delta so the number has a reference point.
   const saving = naive.total > 0 ? 1 - cost.total / naive.total : 0;
+
+  /** Token counting for the Pro tabs, against the model in focus. */
+  const countTokens = useCallback(
+    (s: string) => {
+      if (!enc.ready || s.length === 0) return 0;
+      return countFor(model, encodeBase(s));
+    },
+    [enc.ready, enc.secondary, model],
+  );
+
+  const scaleTokens = useCallback(
+    (m: Model, baseTokens: number) => Math.round(baseTokens * FAMILY_INFO[m.tokenizer].factor),
+    [],
+  );
+
+  const proposalLines: ProposalLine[] = useMemo(
+    () =>
+      compared.map((m) => {
+        const r = rowsById[m.id]!;
+        const flat = callCost(m, r.tokens, assumptions.outputTokens).total;
+        return {
+          model: m,
+          inputTokens: r.tokens,
+          outputTokens: assumptions.outputTokens,
+          callsPerDay: assumptions.callsPerDay,
+          monthlyCost: flat * assumptions.callsPerDay * 30,
+          cachedMonthlyCost:
+            assumptions.cachedShare > 0 && m.cacheReadPerM !== undefined
+              ? r.cost.total * assumptions.callsPerDay * 30
+              : null,
+        };
+      }),
+    [compared, rowsById, assumptions],
+  );
+
+  const draft: NewEstimate | null = empty
+    ? null
+    : {
+        projectTitle: `${model.label} — ${num(tokens)} tokens`,
+        modelId: model.id,
+        inputTokens: tokens,
+        outputTokens: assumptions.outputTokens,
+        cachedTokens: Math.round(tokens * assumptions.cachedShare),
+        estimatedCostUsd: cost.total,
+        promptPreview: deferredText.slice(0, 280),
+        promptMetadata: {
+          chars: tm.chars,
+          words: tm.words,
+          charsPerToken: Number(tok.charsPerToken.toFixed(3)),
+          exact,
+          encoding: FAMILY_INFO[model.tokenizer].encoding,
+        },
+      };
+
+  const openPricing = useCallback(() => setPricingOpen(true), []);
+  const showComposer = tab === 'analyse' || tab === 'trimmer';
+  const showAssumptions = tab === 'analyse' || tab === 'proposal';
 
   return (
     <div className="app">
@@ -211,29 +365,43 @@ export default function App() {
           <span className="brand">
             <Mark />
             TokenTicks
-            <span className="brand__sub">prompt token &amp; cost analytics</span>
+            <span className="brand__sub">AI FinOps &amp; prompt intelligence</span>
           </span>
 
           <div className="row">
             <label className="sr-only" htmlFor="model">
               Model in focus
             </label>
-            <select
-              id="model"
-              className="select"
-              value={model.id}
-              onChange={(e) => setModelId(e.target.value)}
-            >
-              {VENDORS.map((v) => (
-                <optgroup key={v} label={v}>
-                  {MODELS.filter((m) => m.vendor === v).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
+            <select id="model" className="select" value={model.id} onChange={(e) => setModelId(e.target.value)}>
+              {VENDORS.map((v) => {
+                const group = availableModels.filter((m) => m.vendor === v);
+                if (group.length === 0) return null;
+                return (
+                  <optgroup key={v} label={v}>
+                    {group.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
             </select>
+
+            {!ent.features.allModels ? (
+              <button type="button" className="btn btn--ghost" onClick={openPricing} title="Free plans price five models">
+                +{MODELS.length - availableModels.length} more
+              </button>
+            ) : null}
+
+            <Account
+              email={sub.profile?.email ?? auth.user?.email ?? null}
+              tier={sub.tier}
+              ready={auth.ready}
+              onSignIn={() => setAuthOpen(true)}
+              onSignOut={() => void auth.signOut()}
+              onPricing={openPricing}
+            />
 
             <div className="row" role="group" aria-label="Colour theme" style={{ gap: 2 }}>
               {(['light', 'system', 'dark'] as const).map((t) => (
@@ -255,408 +423,147 @@ export default function App() {
       </header>
 
       <main className="shell" style={stale ? { opacity: 0.72 } : undefined}>
-        <Composer
-          text={text}
-          onChange={setText}
-          chars={tm.chars}
-          words={tm.words}
-          lines={tm.lines}
-          bytes={tm.bytes}
-        />
+        {showComposer ? (
+          <Composer
+            text={text}
+            onChange={setText}
+            chars={tm.chars}
+            words={tm.words}
+            lines={tm.lines}
+            bytes={tm.bytes}
+          />
+        ) : null}
 
-        <Notices
-          enc={enc}
-          nonLatinShare={base.nonLatinShare}
-          modelExact={exact}
-        />
+        {sub.preview ? (
+          <p className="notice notice--warn" style={{ marginTop: 14 }} role="status">
+            <strong>Preview mode.</strong> Paid features are unlocked locally by the{' '}
+            <code>?preview={sub.preview}</code> parameter so the product can be reviewed
+            without live billing. No subscription has been granted — the database still
+            treats this account as {sub.profile?.tier ?? 'free'}, and anything it enforces
+            (saved-estimate limits, your real tier) is unchanged.
+          </p>
+        ) : null}
 
-        <Assumptions
-          value={assumptions}
-          onChange={setAssumptions}
-          cacheSupported={model.cacheReadPerM !== undefined}
-          batchSupported={Boolean(model.batchDiscount)}
-        />
+        <Notices enc={enc} nonLatinShare={base.nonLatinShare} modelExact={exact} />
 
-        {/* ------------------------------------------------------ headline --- */}
-        <section className="section" aria-label="Headline figures">
-          <div className="grid grid--kpi">
-            <div className="tile tile--hero">
-              <div>
-                <span className="tile__label">
-                  Prompt tokens on {model.label}
-                  <ExactBadge exact={exact} title={family.basis} />
-                </span>
-                <span className="tile__value tile__value--hero">
-                  {exact ? '' : '~'}
-                  {num(tokens)}
-                </span>
-                <span className="tile__foot">
-                  {family.encoding} · {ratio(tok.charsPerToken)} characters per token
-                </span>
-              </div>
-              <div className="hero__meta">
-                <div>
-                  <span className="tile__label">Cost to send once</span>
-                  <span className="tile__value">{usd(cost.total)}</span>
-                  <span className="tile__foot">
-                    {usd(cost.input)} in + {usd(cost.output)} out
+        {showAssumptions ? (
+          <Assumptions
+            value={assumptions}
+            onChange={setAssumptions}
+            cacheSupported={model.cacheReadPerM !== undefined}
+            batchSupported={Boolean(model.batchDiscount)}
+          />
+        ) : null}
+
+        <nav className="tabs" role="tablist" aria-label="Workbench sections">
+          {TABS.map((t) => {
+            const locked = t.feature ? !sub.can(t.feature) : false;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                className={tab === t.id ? 'tab is-on' : 'tab'}
+                onClick={() => setTab(t.id)}
+              >
+                {t.label}
+                {locked ? (
+                  <span className="tab__lock" aria-label="requires an upgrade">
+                    <SmallLock />
                   </span>
-                </div>
-                <div>
-                  <span className="tile__label">At {compact(assumptions.callsPerDay)} calls/day</span>
-                  <span className="tile__value">{usd(proj.perMonth)}</span>
-                  <span className="tile__foot">per 30 days</span>
-                </div>
-                {saving > 0.001 ? (
-                  <div>
-                    <span className="tile__label">Assumptions save</span>
-                    <span className="tile__value delta--good" style={{ color: 'var(--success-text)' }}>
-                      {pct(saving, 0)}
-                    </span>
-                    <span className="tile__foot">vs. flat, uncached billing</span>
-                  </div>
                 ) : null}
-              </div>
-            </div>
+              </button>
+            );
+          })}
+        </nav>
 
-            <StatTile
-              label="Context used"
-              value={pct(util.fraction, util.fraction < 0.01 ? 2 : 1)}
-              foot={`${num(tokens)} of ${compact(model.context)} tokens`}
-            />
-            <StatTile
-              label="Tokens per word"
-              value={ratio(tok.tokensPerWord)}
-              foot={
-                tok.tokensPerWord > 1.6
-                  ? 'High — code or non-Latin script'
-                  : tok.tokensPerWord > 0
-                    ? 'Typical for English prose'
-                    : '—'
-              }
-            />
-            <StatTile
-              label="Unique tokens"
-              value={num(tok.unique)}
-              foot={`${pct(tok.vocabRatio, 0)} of the prompt is distinct`}
-            />
-            <StatTile
-              label="Formatting tokens"
-              value={pct(tok.formattingShare, 1)}
-              foot="Indentation and line breaks you are billed for"
-            />
-          </div>
-        </section>
-
-        {/* ---------------------------------------------------------- cost --- */}
-        <section className="section" aria-label="Cost">
-          <div className="section__head">
-            <h2>What it costs</h2>
-          </div>
-          <p className="section__note">
-            Per-call cost for this prompt plus the assumed response, under the assumptions
-            above. Selecting a bar or a row changes the model in focus.
-          </p>
-
-          <div className="grid grid--halves">
-            <ChartCard
-              title="Cost per call, by model"
-              note="One measure, one hue: the model in focus is highlighted and the rest are context."
-              view={costView}
-              onView={setCostView}
-              table={<ModelTable rows={compared.map((m) => rowsById[m.id]!)} selectedId={model.id} onSelect={setModelId} assumptions={assumptions} base={base} />}
-            >
-              {empty ? (
-                <div className="empty">Enter a prompt to compare costs.</div>
-              ) : (
-                <BarRows
-                  data={costBars}
-                  valueLabel={(v) => usd(v)}
-                  axisFormat={(v) => usd(v)}
-                  onSelect={setModelId}
-                />
-              )}
-            </ChartCard>
-
-            <ChartCard
-              title="Tokens per model"
-              note="The same text is a different number of tokens on every vendor's vocabulary — which is why cost rankings and token rankings do not always agree."
-              view={tokenView}
-              onView={setTokenView}
-              table={<ModelTable rows={compared.map((m) => rowsById[m.id]!)} selectedId={model.id} onSelect={setModelId} assumptions={assumptions} base={base} />}
-            >
-              {empty ? (
-                <div className="empty">Enter a prompt to compare token counts.</div>
-              ) : (
-                <BarRows
-                  data={tokenBars}
-                  valueLabel={(v) => num(v)}
-                  axisFormat={(v) => compact(v)}
-                  onSelect={setModelId}
-                />
-              )}
-            </ChartCard>
-          </div>
-
-          <div className="grid grid--thirds">
-            <StatTile label="Per call" value={usd(proj.perCall)} foot={`${model.label}, as configured`} />
-            <StatTile label="Per day" value={usd(proj.perDay)} foot={`${num(assumptions.callsPerDay)} calls`} />
-            <StatTile label="Per 30 days" value={usd(proj.perMonth)} foot="At the same volume" />
-            <StatTile label="Per year" value={usd(proj.perYear)} foot="365 days, unchanged volume" />
-          </div>
-
-          <div className="grid grid--halves">
-            <section className="card">
-              <div className="card__head">
-                <h3 className="card__title">Where the money goes</h3>
-              </div>
-              <p className="card__note">
-                One call on {model.label}, split by what you are billed for.
-              </p>
-              <CostSplit
-                input={cost.input}
-                output={cost.output}
-                cached={cost.cached}
-                uncached={cost.uncached}
-                cachedShare={assumptions.cachedShare}
-              />
-            </section>
-
-            <section className="card">
-              <div className="card__head">
-                <h3 className="card__title">Levers</h3>
-              </div>
-              <p className="card__note">
-                What each published discount is worth on this exact prompt, priced
-                independently so you can see which one earns its complexity.
-              </p>
-              <Levers model={model} tokens={tokens} assumptions={assumptions} />
-            </section>
-          </div>
-        </section>
-
-        {/* ------------------------------------------------------- context --- */}
-        <section className="section" aria-label="Context windows">
-          <div className="section__head">
-            <h2>How much room is left</h2>
-          </div>
-          <p className="section__note">
-            The prompt against each model&apos;s context window. The remaining space has to
-            hold the conversation history, tool definitions, retrieved documents and the
-            response itself — so a prompt that fits is not the same as a prompt that fits
-            comfortably.
-          </p>
-          <div className="card">
-            <div className="stack">
-              {compared.map((m) => {
-                const r = rowsById[m.id]!;
-                const u = utilization(r.tokens, m.context);
-                return (
-                  <Meter
-                    key={m.id}
-                    name={
-                      <>
-                        {m.label} <span className="muted">· {compact(m.context)} ctx</span>
-                      </>
-                    }
-                    fraction={u.fraction}
-                    severity={u.severity}
-                    value={pct(u.fraction, u.fraction < 0.01 ? 2 : 1)}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        {/* ------------------------------------------------------- anatomy --- */}
-        <section className="section" aria-label="Prompt anatomy">
-          <div className="section__head">
-            <h2>What the prompt is made of</h2>
-          </div>
-          <p className="section__note">
-            Token counts are not a function of length alone. These are the properties that
-            move them.
-          </p>
-
-          <div className="grid grid--halves">
-            <ChartCard
-              title="Token length distribution"
-              note="How many characters each token covers. A prompt weighted toward one- and two-character tokens is being chopped finely — usually code, unusual names, or a non-Latin script."
-              view={lengthView}
-              onView={setLengthView}
-              table={
-                <div className="tablewrap">
-                  <table className="data">
-                    <thead>
-                      <tr>
-                        <th>Token length</th>
-                        <th>Tokens</th>
-                        <th>Share</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tok.lengths.map((b) => (
-                        <tr key={b.label}>
-                          <td>{b.label}</td>
-                          <td>{num(b.count)}</td>
-                          <td>{pct(base.pieces.length ? b.count / base.pieces.length : 0, 1)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              }
-            >
-              {empty ? (
-                <div className="empty">Enter a prompt to see its token shape.</div>
-              ) : (
-                <Histogram bins={tok.lengths} axisLabel="token length in characters" format={(n) => num(n)} />
-              )}
-            </ChartCard>
-
-            <ChartCard
-              title="Character composition"
-              note="Whitespace and punctuation are billed like everything else. Heavy indentation and dense punctuation are the two cheapest things to fix."
-              view={compView}
-              onView={setCompView}
-              table={
-                <div className="tablewrap">
-                  <table className="data">
-                    <thead>
-                      <tr>
-                        <th>Class</th>
-                        <th>Characters</th>
-                        <th>Share</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tm.composition.map((c) => (
-                        <tr key={c.key}>
-                          <td>{c.label}</td>
-                          <td>{num(c.count)}</td>
-                          <td>{pct(tm.chars ? c.count / tm.chars : 0, 1)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              }
-            >
-              {empty ? (
-                <div className="empty">Enter a prompt to see its composition.</div>
-              ) : (
-                <>
-                  <StackedBar segments={compositionSegments} total={tm.chars} format={(n) => num(n)} />
-                  <Legend items={compositionLegend} />
-                </>
-              )}
-            </ChartCard>
-          </div>
-
-          <div className="grid grid--halves">
-            <section className="card">
-              <div className="card__head">
-                <h3 className="card__title">Most repeated tokens</h3>
-              </div>
-              <p className="card__note">
-                Repetition is the clearest signal that a prompt can be shortened — or that a
-                stable prefix is worth caching.
-              </p>
-              {tok.repeated.length === 0 ? (
-                <div className="empty">No token appears more than once.</div>
-              ) : (
-                <div className="tablewrap">
-                  <table className="data">
-                    <thead>
-                      <tr>
-                        <th>Token</th>
-                        <th>Occurrences</th>
-                        <th>Tokens spent on repeats</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tok.repeated.map((r) => (
-                        <tr key={r.text}>
-                          <td>
-                            <code>{visibleToken(r.text)}</code>
-                          </td>
-                          <td>{num(r.count)}</td>
-                          <td>{num(r.redundant)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-
-            <section className="card">
-              <div className="card__head">
-                <h3 className="card__title">Structure</h3>
-              </div>
-              <p className="card__note">Plain counts, for sizing and for sanity-checking the rest.</p>
-              <div className="grid grid--thirds" style={{ marginTop: 0 }}>
-                <StatTile label="Sentences" value={num(tm.sentences)} />
-                <StatTile label="Paragraphs" value={num(tm.paragraphs)} />
-                <StatTile label="Longest token" value={`${num(tok.longest)} chars`} />
-                <StatTile label="Chars w/o spaces" value={compact(tm.charsNoSpaces)} />
-                <StatTile
-                  label="Bytes per token"
-                  value={ratio(tokens ? tm.bytes / tokens : 0)}
-                  foot="UTF-8 on the wire"
-                />
-                <StatTile
-                  label="Vocabulary ratio"
-                  value={pct(tok.vocabRatio, 0)}
-                  foot={tok.vocabRatio < 0.4 && tok.unique > 0 ? 'Repetitive' : 'Varied'}
-                />
-              </div>
-            </section>
-          </div>
-        </section>
-
-        {/* ----------------------------------------------------- inspector --- */}
-        <section className="section" aria-label="Token inspector">
-          <div className="section__head">
-            <h2>Token by token</h2>
-          </div>
-          <p className="section__note">
-            Where the model actually splits your text. This is the fastest way to see why a
-            prompt costs what it does.
-          </p>
-          <div className="card">
-            <TokenInspector
-              pieces={base.pieces}
-              truncated={base.piecesTruncated}
-              totalTokens={base.o200k.length}
-            />
-          </div>
-        </section>
-
-        {/* --------------------------------------------------- full table --- */}
-        <section className="section" aria-label="All models">
-          <div className="section__head">
-            <h2>Every model</h2>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() =>
+        <div className="section" style={{ marginTop: 18 }}>
+          {tab === 'analyse' ? (
+            <AnalyseTab
+              model={model}
+              base={base}
+              tm={tm}
+              tok={tok}
+              tokens={tokens}
+              exact={exact}
+              assumptions={assumptions}
+              cost={cost}
+              proj={proj}
+              rows={rows}
+              rowsById={rowsById}
+              compared={compared}
+              compositionSegments={compositionSegments}
+              compositionLegend={compositionLegend}
+              costBars={costBars}
+              tokenBars={tokenBars}
+              saving={saving}
+              empty={empty}
+              setModelId={setModelId}
+              comparingAll={compareIds.length === availableModels.length}
+              onToggleCompareAll={() =>
                 setCompareIds(
-                  compareIds.length === MODELS.length ? DEFAULT_COMPARE_IDS : MODELS.map((m) => m.id),
+                  compareIds.length === availableModels.length
+                    ? DEFAULT_COMPARE_IDS
+                    : availableModels.map((m) => m.id),
                 )
               }
-            >
-              {compareIds.length === MODELS.length ? 'Chart a shortlist' : 'Chart all models'}
-            </button>
-          </div>
-          <p className="section__note">
-            Sort by any column. Selecting a row moves the whole dashboard to that model.
-          </p>
-          <div className="card">
-            <ModelTable rows={rows} selectedId={model.id} onSelect={setModelId} assumptions={assumptions} base={base} />
-          </div>
-        </section>
+            />
+          ) : null}
+
+          {TABS.filter((t) => t.gate && t.feature).map((t) =>
+            tab === t.id ? (
+              <ProGatekeeper
+                key={t.id}
+                feature={t.feature!}
+                title={t.gate!.title}
+                pitch={t.gate!.pitch}
+                bullets={t.gate!.bullets}
+                unlocked={sub.can(t.feature!)}
+                onUpgrade={openPricing}
+              >
+                <Suspense fallback={<div className="empty">Loading…</div>}>
+                  {t.id === 'cache' ? (
+                  <CacheSimulator
+                    model={model}
+                    models={availableModels}
+                    onModel={setModelId}
+                    seedFreshTokens={tokens}
+                  />
+                ) : t.id === 'trimmer' ? (
+                  <TokenTrimmer text={deferredText} model={model} countTokens={countTokens} onApply={setText} />
+                ) : t.id === 'batch' ? (
+                  <BatchForecaster
+                    models={compared.length > 0 ? compared : availableModels.slice(0, 6)}
+                    countTokens={(s) => (enc.ready ? encodeBase(s).o200k.length : 0)}
+                    scaleTokens={scaleTokens}
+                    maxRows={ent.maxBatchRows}
+                    canExport={sub.can('csvExport')}
+                  />
+                ) : (
+                    <ProposalBuilder
+                      lines={proposalLines}
+                      assumptions={assumptions}
+                      defaultModel={model}
+                      whiteLabelAllowed={sub.can('whiteLabel')}
+                    />
+                  )}
+                </Suspense>
+              </ProGatekeeper>
+            ) : null,
+          )}
+
+          {tab === 'saved' ? (
+            <SavedEstimates
+              userId={auth.user?.id ?? null}
+              maxSaved={ent.maxSavedEstimates}
+              canShare={sub.can('shareLinks')}
+              draft={draft}
+              onUpgrade={openPricing}
+              onSignIn={() => setAuthOpen(true)}
+            />
+          ) : null}
+        </div>
 
         <footer className="footer">
           <span>
@@ -668,19 +575,103 @@ export default function App() {
             vendor is estimated — see the badge on each figure.
           </span>
           <span>Your prompt stays in this browser. Nothing is uploaded.</span>
+          <button type="button" className="btn btn--ghost" onClick={openPricing}>
+            Plans and pricing
+          </button>
         </footer>
       </main>
+
+      <AuthDialog
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        signIn={auth.signIn}
+        signUp={auth.signUp}
+        signInWithMagicLink={auth.signInWithMagicLink}
+      />
+      <PricingDialog
+        open={pricingOpen}
+        onClose={() => setPricingOpen(false)}
+        currentTier={sub.tier}
+        signedIn={Boolean(auth.user)}
+        onCheckout={(plan: Plan, period) => {
+          sub.openCheckout(plan, period);
+          setPricingOpen(false);
+        }}
+        onNeedAccount={() => {
+          setPricingOpen(false);
+          setAuthOpen(true);
+        }}
+      />
     </div>
   );
 }
 
-/* --------------------------------------------------------------- sub-views */
+/* --------------------------------------------------------------- account -- */
 
-/**
- * Standing caveats: the tokenizer still loading, a load that failed, and the case
- * where the prompt's script is one the estimate factors were not calibrated on.
- * Each is stated once, near the numbers it qualifies.
- */
+function Account({
+  email,
+  tier,
+  ready,
+  onSignIn,
+  onSignOut,
+  onPricing,
+}: {
+  email: string | null;
+  tier: 'free' | 'pro' | 'team';
+  ready: boolean;
+  onSignIn: () => void;
+  onSignOut: () => void;
+  onPricing: () => void;
+}) {
+  if (!hasBackend) {
+    return (
+      <button type="button" className="btn btn--ghost" onClick={onPricing} title="Accounts need a Supabase backend">
+        Plans
+      </button>
+    );
+  }
+  if (!ready) return <span className="muted" style={{ fontSize: 12 }}>…</span>;
+
+  if (!email) {
+    return (
+      <span className="account">
+        <button type="button" className="btn btn--ghost" onClick={onPricing}>
+          Plans
+        </button>
+        <button type="button" className="btn" onClick={onSignIn}>
+          Sign in
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="account">
+      <span className={`account__tier account__tier--${tier}`}>{tier}</span>
+      <span className="account__email" title={email}>
+        {email}
+      </span>
+      {tier === 'free' ? (
+        <button type="button" className="btn btn--primary" onClick={onPricing}>
+          Upgrade
+        </button>
+      ) : null}
+      <button type="button" className="btn btn--ghost" onClick={onSignOut}>
+        Sign out
+      </button>
+    </span>
+  );
+}
+
+function SmallLock() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="2.6" y="5.4" width="6.8" height="5" rx="1.3" />
+      <path d="M4.3 5.4V4.2a1.7 1.7 0 0 1 3.4 0v1.2" />
+    </svg>
+  );
+}
+
 function Notices({
   enc,
   nonLatinShare,
@@ -735,167 +726,7 @@ function Notices({
   );
 }
 
-function CostSplit({
-  input,
-  output,
-  cached,
-  uncached,
-  cachedShare,
-}: {
-  input: number;
-  output: number;
-  cached: number;
-  uncached: number;
-  cachedShare: number;
-}) {
-  const total = input + output;
-  if (total <= 0) return <div className="empty">No cost yet.</div>;
 
-  const parts =
-    cachedShare > 0
-      ? [
-          { key: 'cached', label: 'Cached prefix', value: cached, color: 'var(--series-3)' },
-          { key: 'uncached', label: 'Fresh input', value: uncached, color: 'var(--series-1)' },
-          { key: 'output', label: 'Output', value: output, color: 'var(--series-2)' },
-        ]
-      : [
-          { key: 'input', label: 'Input', value: input, color: 'var(--series-1)' },
-          { key: 'output', label: 'Output', value: output, color: 'var(--series-2)' },
-        ];
-
-  return (
-    <>
-      <StackedBar segments={parts.filter((p) => p.value > 0)} total={total} format={(n) => usd(n)} />
-      <Legend
-        items={parts
-          .filter((p) => p.value > 0)
-          .map((p) => ({ label: p.label, color: p.color, value: ` ${usd(p.value)}` }))}
-      />
-      <div className="tablewrap" style={{ marginTop: 12 }}>
-        <table className="data">
-          <thead>
-            <tr>
-              <th>Component</th>
-              <th>Per call</th>
-              <th>Share</th>
-            </tr>
-          </thead>
-          <tbody>
-            {parts.map((p) => (
-              <tr key={p.key}>
-                <td>{p.label}</td>
-                <td>{usd(p.value)}</td>
-                <td>{pct(p.value / total, 1)}</td>
-              </tr>
-            ))}
-            <tr>
-              <td>
-                <b>Total</b>
-              </td>
-              <td>
-                <b>{usd(total)}</b>
-              </td>
-              <td>100%</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
-
-function Levers({
-  model,
-  tokens,
-  assumptions,
-}: {
-  model: Model;
-  tokens: number;
-  assumptions: CostAssumptions;
-}) {
-  const flat = callCost(model, tokens, assumptions.outputTokens).total;
-  if (flat <= 0) return <div className="empty">Enter a prompt to price the levers.</div>;
-
-  // Each lever is priced on its own against the flat baseline, so the numbers
-  // answer "what is this one worth" rather than compounding into a single claim.
-  const withCache =
-    model.cacheReadPerM === undefined
-      ? null
-      : effectiveCost(model, tokens, {
-          ...assumptions,
-          cachedShare: Math.max(assumptions.cachedShare, 0.8),
-          cacheHitRate: Math.max(assumptions.cacheHitRate, 0.9),
-          useBatch: false,
-        }).total;
-
-  const withBatch = model.batchDiscount
-    ? effectiveCost(model, tokens, { ...assumptions, cachedShare: 0, cacheHitRate: 0, useBatch: true }).total
-    : null;
-
-  const trimmed = callCost(model, Math.round(tokens * 0.8), assumptions.outputTokens).total;
-
-  const items = [
-    {
-      label: 'Cache an 80% prefix at a 90% hit rate',
-      value: withCache,
-      why:
-        model.cacheReadPerM === undefined
-          ? 'No published cache rate for this model.'
-          : `Reads bill at ${usd(model.cacheReadPerM)} per 1M versus ${usd(model.inputPerM)} uncached.`,
-    },
-    {
-      label: 'Run it through the batch endpoint',
-      value: withBatch,
-      why: model.batchDiscount
-        ? `${pct(model.batchDiscount, 0)} off every token, at the cost of async delivery.`
-        : 'No batch endpoint for this model.',
-    },
-    {
-      label: 'Cut the prompt by 20%',
-      value: trimmed,
-      why: 'Output is unchanged, so the saving is bounded by the input share.',
-    },
-  ];
-
-  return (
-    <div className="tablewrap">
-      <table className="data">
-        <thead>
-          <tr>
-            <th>Lever</th>
-            <th>Per call</th>
-            <th>Saving</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Flat billing, no levers</td>
-            <td>{usd(flat)}</td>
-            <td>—</td>
-          </tr>
-          {items.map((it) => (
-            <tr key={it.label}>
-              <td title={it.why}>{it.label}</td>
-              <td>{it.value === null ? '—' : usd(it.value)}</td>
-              <td style={it.value !== null && it.value < flat ? { color: 'var(--success-text)', fontWeight: 600 } : undefined}>
-                {it.value === null ? 'n/a' : pct(1 - it.value / flat, 0)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/* ----------------------------------------------------------------- icons -- */
-
-/**
- * Token blocks: two rows of solid blocks at uneven widths, the same shape the
- * token inspector draws on real text. Solid fills rather than strokes so it
- * still reads at favicon size, and uneven widths so it is not mistaken for a
- * generic grid.
- */
 function Mark() {
   return (
     <svg className="brand__mark" viewBox="0 0 24 24" aria-hidden="true" fill="var(--series-1)">
