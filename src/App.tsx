@@ -57,18 +57,18 @@ type View = 'chart' | 'table';
 
 export default function App() {
   const [theme, setTheme] = useTheme();
-  const [text, setText] = usePersisted<string>('tokenlens.prompt', '');
-  const [modelId, setModelId] = usePersisted<string>('tokenlens.model', DEFAULT_MODEL_ID, (v) =>
+  const [text, setText] = usePersisted<string>('tokenticks.prompt', '');
+  const [modelId, setModelId] = usePersisted<string>('tokenticks.model', DEFAULT_MODEL_ID, (v) =>
     typeof v === 'string' && MODELS_BY_ID[v] ? v : null,
   );
   const [assumptions, setAssumptions] = usePersisted<CostAssumptions>(
-    'tokenlens.assumptions',
+    'tokenticks.assumptions',
     DEFAULT_ASSUMPTIONS,
     (v) =>
       v && typeof v === 'object' ? { ...DEFAULT_ASSUMPTIONS, ...(v as CostAssumptions) } : null,
   );
   const [compareIds, setCompareIds] = usePersisted<string[]>(
-    'tokenlens.compare',
+    'tokenticks.compare',
     DEFAULT_COMPARE_IDS,
     (v) => (Array.isArray(v) ? v.filter((id) => typeof id === 'string' && MODELS_BY_ID[id]) : null),
   );
@@ -210,7 +210,7 @@ export default function App() {
         <div className="topbar__inner">
           <span className="brand">
             <Mark />
-            TokenLens
+            TokenTicks
             <span className="brand__sub">prompt token &amp; cost analytics</span>
           </span>
 
@@ -890,12 +890,19 @@ function Levers({
 
 /* ----------------------------------------------------------------- icons -- */
 
+/**
+ * Token blocks: two rows of solid blocks at uneven widths, the same shape the
+ * token inspector draws on real text. Solid fills rather than strokes so it
+ * still reads at favicon size, and uneven widths so it is not mistaken for a
+ * generic grid.
+ */
 function Mark() {
   return (
-    <svg className="brand__mark" viewBox="0 0 24 24" aria-hidden="true" fill="none">
-      <circle cx="10.5" cy="10.5" r="6.5" stroke="var(--series-1)" strokeWidth="2" />
-      <path d="M15.4 15.4 21 21" stroke="var(--series-1)" strokeWidth="2" strokeLinecap="round" />
-      <path d="M7.5 10.5h6M10.5 7.5v6" stroke="var(--series-1)" strokeWidth="1.5" strokeLinecap="round" opacity="0.55" />
+    <svg className="brand__mark" viewBox="0 0 24 24" aria-hidden="true" fill="var(--series-1)">
+      <rect x="2.5" y="4.5" width="7" height="6" rx="1.8" />
+      <rect x="11.5" y="4.5" width="10" height="6" rx="1.8" opacity="0.45" />
+      <rect x="2.5" y="13.5" width="10.5" height="6" rx="1.8" opacity="0.45" />
+      <rect x="15" y="13.5" width="6.5" height="6" rx="1.8" />
     </svg>
   );
 }

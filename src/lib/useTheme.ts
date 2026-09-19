@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 export type Theme = 'system' | 'light' | 'dark';
 
-const KEY = 'tokenlens.theme';
+const KEY = 'tokenticks.theme';
 
 /**
  * Theme choice. `system` removes the stamp so the OS media query governs; an

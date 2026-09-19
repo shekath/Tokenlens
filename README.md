@@ -1,9 +1,9 @@
-# TokenLens
+# TokenTicks
 
 Paste a prompt, see what it costs — on Claude, GPT, Gemini, Grok, DeepSeek, Mistral,
 Llama, Command and Qwen, side by side.
 
-TokenLens is a single-page dashboard that tokenises whatever you paste, prices it
+TokenTicks is a single-page dashboard that tokenises whatever you paste, prices it
 against ~30 models, and shows the metrics that explain *why* the number is what it
 is: token length distribution, character composition, repetition, formatting
 overhead, context-window pressure, and what caching or a batch endpoint would
@@ -40,7 +40,7 @@ npm run visual-check   # layout/overflow checks in a real browser (needs `npm ru
 Anthropic and xAI do not publish a client-side tokenizer; Gemini, Mistral and Qwen
 use SentencePiece-style vocabularies whose rank tables are megabytes each. Rather
 than fall back on `characters / 4` — which is blind to code, punctuation density and
-script, the three things that actually move a token count — TokenLens runs the real
+script, the three things that actually move a token count — TokenTicks runs the real
 o200k BPE and scales the result by a per-family factor. The structure of your text
 is preserved; only the vocabulary's efficiency is approximated.
 
