@@ -267,6 +267,12 @@ create trigger saved_estimates_share_slug
   before insert or update on public.saved_estimates
   for each row execute function public.assign_share_slug();
 
+-- An email sign-up puts the name under `full_name`, because that is the key the
+-- sign-up form sends. An OAuth provider sends whatever it sends: Google's OIDC
+-- claims carry `name`, and Supabase maps `full_name` alongside it, but not every
+-- provider does both. Reading only `full_name` would leave Google accounts with
+-- a null name for no reason, so try the common keys in order and fall back to
+-- the local part of the email rather than storing nothing.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -275,7 +281,19 @@ set search_path = public, pg_temp
 as $$
 begin
   insert into public.profiles (id, email, full_name)
-  values (new.id, new.email, new.raw_user_meta_data ->> 'full_name')
+  values (
+    new.id,
+    new.email,
+    nullif(
+      trim(coalesce(
+        new.raw_user_meta_data ->> 'full_name',
+        new.raw_user_meta_data ->> 'name',
+        new.raw_user_meta_data ->> 'preferred_username',
+        split_part(coalesce(new.email, ''), '@', 1)
+      )),
+      ''
+    )
+  )
   on conflict (id) do nothing;
   return new;
 end;

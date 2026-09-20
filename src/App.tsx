@@ -587,6 +587,7 @@ export default function App() {
         signIn={auth.signIn}
         signUp={auth.signUp}
         signInWithMagicLink={auth.signInWithMagicLink}
+        signInWithGoogle={auth.signInWithGoogle}
       />
       <PricingDialog
         open={pricingOpen}

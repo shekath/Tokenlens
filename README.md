@@ -157,6 +157,12 @@ The current comparison as a branded PDF: recommended model, monthly cost per
 model with and without caching, and the assumptions behind both. Rendered
 locally with jsPDF.
 
+### Accounts
+
+Email and password, magic link, or **Continue with Google**. A saved estimate
+stores token counts and costs plus an optional 280-character excerpt — never the
+prompt. See `supabase/README.md` for the Google OAuth setup.
+
 ### Saved — account required
 
 Named estimates, with the free tier capped at 3 by a database policy rather than

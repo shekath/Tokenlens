@@ -47,6 +47,37 @@ All three are covered by the offline suite now, so they cannot regress.
   intended configuration: deny-all for everyone except the service role, which
   bypasses RLS.
 
+## Google sign-in
+
+The app offers "Continue with Google" alongside email/password and magic link.
+Two pieces of configuration make it work; without them the button appears and
+Supabase returns `provider is not enabled`.
+
+**1. Google Cloud Console** — APIs & Services → Credentials → Create OAuth
+client ID → Web application. Under *Authorized redirect URIs* add exactly:
+
+```
+https://iashboyuhcbhsrvkfsuk.supabase.co/auth/v1/callback
+```
+
+That is Supabase's callback, not the app's URL — Google redirects to Supabase,
+which then redirects to the app. Copy the client ID and secret.
+
+**2. Supabase dashboard** — Authentication → Providers → Google → enable, paste
+the client ID and secret.
+
+The same redirect allow list governs where the user lands afterwards, so
+Authentication → URL Configuration must contain the app's URL or OAuth will
+finish at the Site URL instead (localhost, by default).
+
+### Account linking
+
+Supabase links a Google identity to an existing account when the email matches
+and the address is verified. Someone who signed up with a password and later
+uses Google keeps one account and one profile row. Where that is not the case
+the second sign-in creates a separate user, with its own profile and its own
+tier — worth knowing before any support ticket about a "missing" subscription.
+
 ## Applying to a fresh project
 
 ```bash

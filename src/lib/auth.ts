@@ -13,7 +13,20 @@ export interface AuthActions {
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signInWithMagicLink: (email: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+}
+
+/**
+ * Where an auth flow should return to.
+ *
+ * Supabase only honours a redirect that is on the project's allow list; anything
+ * else is silently replaced by the Site URL. So this has to match an entry under
+ * Authentication -> URL Configuration exactly, including the /Tokenlens/ path
+ * that GitHub Pages serves the app from.
+ */
+function redirectTarget(): string {
+  return window.location.origin + window.location.pathname;
 }
 
 /**
@@ -63,7 +76,7 @@ export function useAuth(): AuthState & AuthActions {
       password,
       options: {
         data: { full_name: fullName },
-        emailRedirectTo: window.location.origin + window.location.pathname,
+        emailRedirectTo: redirectTarget(),
       },
     });
     if (error) throw error;
@@ -79,7 +92,24 @@ export function useAuth(): AuthState & AuthActions {
     const client = guard();
     const { error } = await client.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin + window.location.pathname },
+      options: { emailRedirectTo: redirectTarget() },
+    });
+    if (error) throw error;
+  }, []);
+
+  const signInWithGoogle = useCallback(async () => {
+    const client = guard();
+    // This navigates away to Google and returns to redirectTarget(), where the
+    // client picks the session out of the URL (detectSessionInUrl). Nothing
+    // after this line runs on the success path.
+    const { error } = await client.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectTarget(),
+        // Ask for a refresh token and let the user pick an account rather than
+        // being silently signed in as whoever the browser saw last.
+        queryParams: { access_type: 'offline', prompt: 'select_account' },
+      },
     });
     if (error) throw error;
   }, []);
@@ -90,7 +120,7 @@ export function useAuth(): AuthState & AuthActions {
     if (error) throw error;
   }, []);
 
-  return { ...state, signUp, signIn, signInWithMagicLink, signOut };
+  return { ...state, signUp, signIn, signInWithMagicLink, signInWithGoogle, signOut };
 }
 
 /** Password rules, enforced here so the form can explain them before submitting. */

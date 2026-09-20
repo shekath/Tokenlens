@@ -344,6 +344,28 @@ begin
   raise notice '  ok: unparseable claims fail closed - the tier is still locked';
 end $$;
 
+\echo ''
+\echo '== the profile trigger handles OAuth metadata, not just the sign-up form =='
+select test_reset();
+
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('99999999-0000-0000-0000-000000000001', 'form@example.invalid',   '{"full_name":"Form Person"}'),
+  ('99999999-0000-0000-0000-000000000002', 'oauth@example.invalid',  '{"name":"OAuth Person","avatar_url":"https://x/y.png"}'),
+  ('99999999-0000-0000-0000-000000000003', 'bare@example.invalid',   '{}');
+
+select assert(
+  (select full_name from public.profiles where email = 'form@example.invalid') = 'Form Person',
+  'an email sign-up keeps the name it submitted'
+);
+select assert(
+  (select full_name from public.profiles where email = 'oauth@example.invalid') = 'OAuth Person',
+  'a Google-style provider sending only `name` still gets a name'
+);
+select assert(
+  (select full_name from public.profiles where email = 'bare@example.invalid') = 'bare',
+  'and a provider sending no name at all falls back to the email local part'
+);
+
 select test_reset();
 \echo ''
 \echo 'All RLS assertions passed.'
