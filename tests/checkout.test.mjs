@@ -47,6 +47,41 @@ test('and a plan with no annual variant falls back to monthly rather than failin
   assert.match(r.url, /var-team-monthly/);
 });
 
+test('a store root instead of a checkout base is caught', () => {
+  const r = checkoutTarget({
+    plan: pro,
+    period: 'monthly',
+    base: 'https://tokenticks.lemonsqueezy.com',
+    variantFor,
+    profile: PROFILE,
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /\/checkout\/buy/);
+});
+
+test('and so is a whole checkout link with a variant already on the end', () => {
+  const r = checkoutTarget({
+    plan: pro,
+    period: 'monthly',
+    base: 'https://tokenticks.lemonsqueezy.com/checkout/buy/95a27d9f-cb82-4e36-a271-59cf6881c888',
+    variantFor,
+    profile: PROFILE,
+  });
+  assert.equal(r.ok, false);
+});
+
+test('a trailing slash on a correct base is fine', () => {
+  const r = checkoutTarget({
+    plan: pro,
+    period: 'monthly',
+    base: 'https://tokenticks.lemonsqueezy.com/checkout/buy/',
+    variantFor,
+    profile: PROFILE,
+  });
+  assert.equal(r.ok, true);
+  assert.equal(new URL(r.url).pathname, '/checkout/buy/var-pro-monthly');
+});
+
 test('a missing store URL is reported as a deployment problem', () => {
   const r = checkoutTarget({ plan: pro, period: 'monthly', base: undefined, variantFor, profile: PROFILE });
   assert.equal(r.ok, false);

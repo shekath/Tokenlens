@@ -23,6 +23,14 @@ export type CheckoutFailure = 'unconfigured' | 'wrong-id-kind' | 'no-account';
  */
 const NUMERIC_ID = /^\d+$/;
 
+/**
+ * The base the variant UUID is appended to. Lemon Squeezy's checkout links are
+ * `https://<store>.lemonsqueezy.com/checkout/buy/<uuid>`, so anything else here
+ * - the store root, or a whole checkout link with a variant already on the end
+ * - builds a path that does not exist.
+ */
+const CHECKOUT_BASE = /\/checkout\/buy\/?$/;
+
 export type CheckoutTarget =
   | { ok: true; url: string }
   | { ok: false; reason: CheckoutFailure; message: string };
@@ -60,6 +68,17 @@ export function checkoutTarget({
         'link needs the variant UUID — the last part of its "Copy checkout URL" in ' +
         'Lemon Squeezy. The number is the one the webhook uses, and belongs in the ' +
         'Edge Function secrets instead.',
+    };
+  }
+
+  if (base && !CHECKOUT_BASE.test(base)) {
+    return {
+      ok: false,
+      reason: 'wrong-id-kind',
+      message:
+        `The store URL is set to ${base}, which is not a checkout base. It has to end ` +
+        'in /checkout/buy — the variant UUID is appended to it. A whole checkout link ' +
+        'with a variant already on the end will not work either.',
     };
   }
 

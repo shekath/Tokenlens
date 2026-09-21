@@ -43,18 +43,22 @@ if (target) {
     .map((f) => readFileSync(join(dir, f), 'utf8'))
     .join('\n');
 
-  // The checkout base is read as a static import.meta.env.X, which Vite
-  // replaces with a bare string literal - so it is found by its shape.
-  const checkout = js.match(/https:\/\/[a-z0-9-]+\.lemonsqueezy\.com\/checkout\/buy/i);
-  found.VITE_LEMON_CHECKOUT_URL = checkout ? checkout[0] : '';
-
   // The variant ids are read through a computed key (the plan says which one),
-  // which Vite cannot resolve statically, so it inlines the whole env object
-  // instead - names and all. That is what makes a shipped bundle checkable at
-  // all; matching loose id-shaped strings would have picked up every CSS
-  // colour in the file.
-  for (const m of js.matchAll(/(VITE_LEMON_VARIANT_[A-Z_]+)"?\s*:\s*"([^"]*)"/g)) {
+  // which Vite cannot resolve statically, so it inlines the whole import.meta
+  // .env object instead - names and all. Every VITE_ value is in there, which
+  // is what makes a shipped bundle checkable by name at all.
+  for (const m of js.matchAll(/(VITE_LEMON_[A-Z_]+)"?\s*:\s*"([^"]*)"/g)) {
     if (m[2]) found[m[1]] = m[2];
+  }
+
+  // Fall back to shape for the checkout base. It is also read as a static
+  // import.meta.env.X, which Vite replaces with a bare literal, so on a build
+  // where the env object did not survive this is the only trace of it. Reading
+  // by name first matters: by shape alone, a value that is merely WRONG is
+  // indistinguishable from one that is absent, and those need different fixes.
+  if (!found.VITE_LEMON_CHECKOUT_URL) {
+    const checkout = js.match(/https:\/\/[a-z0-9-]+\.lemonsqueezy\.com\/[\w\/-]*/i);
+    found.VITE_LEMON_CHECKOUT_URL = checkout ? checkout[0] : '';
   }
 } else {
   const envPath = existsSync('.env') ? '.env' : null;
@@ -85,10 +89,20 @@ for (const key of KEYS) {
   const numeric = ok && key.startsWith('VITE_LEMON_VARIANT') && /^\d+$/.test(value);
   if (numeric) wrongKind += 1;
 
-  const mark = numeric ? 'WRONG ID' : ok ? 'set  ' : OPTIONAL.has(key) ? 'unset' : 'MISSING';
+  // The app appends /<variant-uuid> to this, so it has to be the checkout base
+  // and not the store root or a whole checkout link with a variant already on
+  // the end.
+  const badBase =
+    ok && key === 'VITE_LEMON_CHECKOUT_URL' && !/\/checkout\/buy\/?$/.test(value);
+  if (badBase) wrongKind += 1;
+
+  const mark = numeric || badBase ? 'WRONG' : ok ? 'set  ' : OPTIONAL.has(key) ? 'unset' : 'MISSING';
   console.log(`  ${mark.padEnd(8)} ${key}${ok ? ` = ${value}` : ''}`);
   if (numeric) {
     console.log('           ^ that is the numeric webhook id; this slot needs the variant UUID');
+  }
+  if (badBase) {
+    console.log('           ^ must end in /checkout/buy - the app appends /<variant-uuid>');
   }
 }
 
@@ -111,9 +125,10 @@ Server half (which tier a purchase grants)
 
 if (wrongKind) {
   console.error(
-    `${wrongKind} variant id${wrongKind === 1 ? ' is' : 's are'} the numeric kind. A checkout ` +
-      'link ends in the variant UUID - the last path segment of "Copy checkout URL" in Lemon ' +
-      'Squeezy. The numbers belong in LEMON_PRO_VARIANT_IDS / LEMON_TEAM_VARIANT_IDS instead.',
+    `${wrongKind} value${wrongKind === 1 ? ' is' : 's are'} set but wrong (see WRONG above). ` +
+      'A checkout link ends in the variant UUID - the last path segment of "Copy checkout URL" ' +
+      'in Lemon Squeezy - and the base must end in /checkout/buy. The numeric ids belong in ' +
+      'LEMON_PRO_VARIANT_IDS / LEMON_TEAM_VARIANT_IDS instead.',
   );
 }
 if (missing) {
