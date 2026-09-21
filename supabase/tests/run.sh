@@ -22,7 +22,9 @@ trap cleanup EXIT
 
 psql -q -d postgres -c "create database \"$DB\";"
 psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$here/00_supabase_shim.sql" >/dev/null
-psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$here/../migrations/0001_init.sql" >/dev/null
+for m in "$here"/../migrations/*.sql; do
+  psql -q -v ON_ERROR_STOP=1 -d "$DB" -f "$m" >/dev/null
+done
 
 # ON_ERROR_STOP makes psql exit non-zero on a raised assertion, and `set -e`
 # turns that into a failed run. Assertions announce themselves via NOTICE on
