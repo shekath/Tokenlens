@@ -29,8 +29,10 @@ import {
 import { compact, num, pct, ratio, usd } from './lib/format';
 import { useTheme, usePersisted } from './lib/useTheme';
 import { useAuth } from './lib/auth';
-import { useSubscription } from './lib/subscription';
+import { ProfileMenu } from './components/ProfileMenu';
+import { useSubscription, type Profile } from './lib/subscription';
 import { hasBackend } from './lib/supabase';
+import type { User } from '@supabase/supabase-js';
 import type { Feature, Plan } from './lib/entitlements';
 import type { NewEstimate } from './lib/estimates';
 import type { ProposalLine } from './lib/proposal';
@@ -395,12 +397,14 @@ export default function App() {
             ) : null}
 
             <Account
-              email={sub.profile?.email ?? auth.user?.email ?? null}
+              user={auth.user}
+              profile={sub.profile}
               tier={sub.tier}
               ready={auth.ready}
               onSignIn={() => setAuthOpen(true)}
               onSignOut={() => void auth.signOut()}
               onPricing={openPricing}
+              onProfileSaved={() => void sub.refresh()}
             />
 
             <div className="row" role="group" aria-label="Colour theme" style={{ gap: 2 }}>
@@ -619,19 +623,23 @@ export default function App() {
 /* --------------------------------------------------------------- account -- */
 
 function Account({
-  email,
+  user,
+  profile,
   tier,
   ready,
   onSignIn,
   onSignOut,
   onPricing,
+  onProfileSaved,
 }: {
-  email: string | null;
+  user: User | null;
+  profile: Profile | null;
   tier: 'free' | 'pro' | 'team';
   ready: boolean;
   onSignIn: () => void;
   onSignOut: () => void;
   onPricing: () => void;
+  onProfileSaved: () => void;
 }) {
   if (!hasBackend) {
     return (
@@ -642,7 +650,7 @@ function Account({
   }
   if (!ready) return <span className="muted" style={{ fontSize: 12 }}>…</span>;
 
-  if (!email) {
+  if (!user) {
     return (
       <span className="account">
         <button type="button" className="btn btn--ghost" onClick={onPricing}>
@@ -657,18 +665,19 @@ function Account({
 
   return (
     <span className="account">
-      <span className={`account__tier account__tier--${tier}`}>{tier}</span>
-      <span className="account__email" title={email}>
-        {email}
-      </span>
       {tier === 'free' ? (
         <button type="button" className="btn btn--primary" onClick={onPricing}>
           Upgrade
         </button>
       ) : null}
-      <button type="button" className="btn btn--ghost" onClick={onSignOut}>
-        Sign out
-      </button>
+      <ProfileMenu
+        user={user}
+        profile={profile}
+        tier={tier}
+        onPricing={onPricing}
+        onSignOut={onSignOut}
+        onSaved={onProfileSaved}
+      />
     </span>
   );
 }

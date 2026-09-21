@@ -1366,3 +1366,180 @@ table.data tbody tr.is-on td:first-child {
   height: 1px;
   background: var(--border);
 }
+
+/* ======================================================== profile menu === */
+
+.pmenu {
+  position: relative;
+  display: inline-flex;
+}
+
+.pmenu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 8px 0 4px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pmenu__trigger:hover {
+  background: var(--surface-hover);
+}
+
+.pmenu__avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--series-1);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pmenu__avatar--lg {
+  width: 34px;
+  height: 34px;
+  font-size: 13px;
+}
+
+.pmenu__name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .pmenu__name {
+    display: none;
+  }
+}
+
+.pmenu__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: 280px;
+  max-width: calc(100vw - 24px);
+  padding: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+
+.pmenu__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 8px 10px;
+}
+
+.pmenu__ident {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.pmenu__identName {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pmenu__identMail {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pmenu__sep {
+  height: 1px;
+  margin: 5px 0;
+  background: var(--border);
+}
+
+.pmenu__item {
+  display: block;
+  width: 100%;
+  padding: 7px 8px;
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pmenu__item:hover,
+.pmenu__item:focus-visible {
+  background: var(--surface-hover);
+}
+
+.pmenu__item--quiet {
+  color: var(--text-secondary);
+}
+
+/* The support reference. Monospaced and tabular so it can be read out a
+   character at a time, which is how it will actually be used. */
+.accountId {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+
+.accountId__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.accountId__label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.accountId__value {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+  user-select: all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accountId__copy {
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.input--readonly {
+  color: var(--text-secondary);
+  background: var(--surface-2);
+}

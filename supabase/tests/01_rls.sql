@@ -303,8 +303,12 @@ select assert(
   'the sign-up trigger function is not callable over REST'
 );
 select assert(
-  not test_is_rpc_reachable('public.lock_profile_billing_columns()', 'anon'),
-  'the billing-lock trigger function is not callable over REST'
+  not test_is_rpc_reachable('public.lock_profile_managed_columns()', 'anon'),
+  'the column-lock trigger function is not callable over REST'
+);
+select assert(
+  not test_is_rpc_reachable('private.new_public_id()', 'anon'),
+  'the public_id generator is not callable over REST'
 );
 select assert(
   test_is_rpc_reachable('public.get_shared_estimate(text)', 'anon'),
@@ -314,6 +318,96 @@ select assert(
 select assert(
   has_function_privilege('authenticated', 'private.current_tier(uuid)', 'EXECUTE'),
   'and authenticated can still execute them from inside a policy'
+);
+
+\echo ''
+\echo '== the public account reference =='
+-- A support identifier a user could change is one support cannot trust, and one
+-- a user could choose is one they could impersonate another with. Both paths
+-- are closed here rather than only in the form.
+select test_reset();
+
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('33333333-3333-3333-3333-333333333333', 'carol@example.com', '{"full_name":"Carol Danvers"}');
+
+select assert(
+  (select count(*) from public.profiles where public_id is null) = 0,
+  'every profile has a public_id'
+);
+select assert(
+  (select count(distinct public_id) from public.profiles) = (select count(*) from public.profiles),
+  'and no two share one'
+);
+select assert(
+  (select public_id from public.profiles where id = '33333333-3333-3333-3333-333333333333')
+    ~ '^TT-[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}$',
+  'it reads as TT-XXXXX-XXXXX over an alphabet with no I, L, O or U'
+);
+select assert(
+  (select display_name from public.profiles where id = '33333333-3333-3333-3333-333333333333') = 'Carol',
+  'the opening display name is the first word of the full name'
+);
+
+select test_as_user('33333333-3333-3333-3333-333333333333');
+
+do $$
+declare
+  before_id text;
+  after_id  text;
+begin
+  select public_id into before_id from public.profiles
+   where id = '33333333-3333-3333-3333-333333333333';
+
+  update public.profiles set public_id = 'TT-00000-00000'
+   where id = '33333333-3333-3333-3333-333333333333';
+
+  select public_id into after_id from public.profiles
+   where id = '33333333-3333-3333-3333-333333333333';
+
+  perform assert(after_id = before_id, 'a user cannot rewrite their own public_id');
+end;
+$$;
+
+-- The same write that is reverted above must still carry the editable columns
+-- through, or the lock would have made the form useless.
+update public.profiles
+   set full_name = 'Carol Danvers', display_name = 'Cap', phone = '+44 20 7946 0958', country = 'GB'
+ where id = '33333333-3333-3333-3333-333333333333';
+
+select assert(
+  (select display_name from public.profiles where id = '33333333-3333-3333-3333-333333333333') = 'Cap',
+  'but can edit their display name'
+);
+select assert(
+  (select phone || ' ' || country from public.profiles where id = '33333333-3333-3333-3333-333333333333')
+    = '+44 20 7946 0958 GB',
+  'and their phone and country'
+);
+
+do $$
+begin
+  begin
+    update public.profiles set country = 'gb'
+     where id = '33333333-3333-3333-3333-333333333333';
+    raise exception 'FAILED: a lowercase country code was accepted';
+  exception when check_violation then
+    raise notice '  ok: country must be an uppercase ISO 3166-1 alpha-2 code';
+  end;
+
+  begin
+    update public.profiles set phone = 'call me'
+     where id = '33333333-3333-3333-3333-333333333333';
+    raise exception 'FAILED: a non-numeric phone number was accepted';
+  exception when check_violation then
+    raise notice '  ok: the phone column holds something dialable or nothing';
+  end;
+end;
+$$;
+
+select test_as_service();
+select assert(
+  (select tier from public.profiles where id = '33333333-3333-3333-3333-333333333333') = 'free',
+  'and none of that touched the tier'
 );
 
 \echo ''

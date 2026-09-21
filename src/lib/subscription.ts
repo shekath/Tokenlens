@@ -12,8 +12,14 @@ import {
 
 export interface Profile {
   id: string;
+  /** The account reference shown to the user and quoted by support. */
+  publicId: string;
   email: string;
   fullName: string | null;
+  displayName: string | null;
+  phone: string | null;
+  /** ISO 3166-1 alpha-2, or null. */
+  country: string | null;
   tier: Tier;
   status: SubscriptionStatus;
   currentPeriodEnd: string | null;
@@ -78,7 +84,9 @@ export function useSubscription(user: User | null): SubscriptionState {
     setError(null);
     const { data, error: err } = await supabase
       .from('profiles')
-      .select('id, email, full_name, tier, subscription_status, current_period_end')
+      .select(
+        'id, public_id, email, full_name, display_name, phone, country, tier, subscription_status, current_period_end',
+      )
       .eq('id', user.id)
       .maybeSingle();
 
@@ -88,8 +96,12 @@ export function useSubscription(user: User | null): SubscriptionState {
     } else if (data) {
       setProfile({
         id: data.id,
+        publicId: data.public_id,
         email: data.email,
         fullName: data.full_name,
+        displayName: data.display_name,
+        phone: data.phone,
+        country: data.country,
         tier: data.tier,
         status: data.subscription_status,
         currentPeriodEnd: data.current_period_end,
