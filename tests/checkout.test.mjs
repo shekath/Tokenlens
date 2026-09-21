@@ -67,6 +67,49 @@ test('a missing variant id names the plan it is missing for', () => {
   assert.match(r.message, /Team/);
 });
 
+test('a numeric variant id is caught before it becomes a 404', () => {
+  // The real failure: the webhook's numeric variant_id pasted into the
+  // browser's slot. Lemon Squeezy answers /checkout/buy/2152668 with a 404,
+  // on its own domain, after the customer has decided to pay.
+  const r = checkoutTarget({
+    plan: pro,
+    period: 'monthly',
+    base: BASE,
+    variantFor: () => '2152668',
+    profile: PROFILE,
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'wrong-id-kind');
+  assert.match(r.message, /UUID/);
+  assert.match(r.message, /2152668/, 'the value is quoted back so it can be found');
+});
+
+test('a UUID variant id is accepted', () => {
+  const uuid = '9d4e1f2a-7c3b-4e5d-8a9f-1b2c3d4e5f60';
+  const r = checkoutTarget({
+    plan: pro,
+    period: 'monthly',
+    base: BASE,
+    variantFor: () => uuid,
+    profile: PROFILE,
+  });
+  assert.equal(r.ok, true);
+  assert.equal(new URL(r.url).pathname, `/checkout/buy/${uuid}`);
+});
+
+test('a numeric id is reported ahead of a missing profile', () => {
+  // Configuration first: telling someone to wait a moment for an account that
+  // has loaded fine would send them round a loop that never ends.
+  const r = checkoutTarget({
+    plan: pro,
+    period: 'monthly',
+    base: BASE,
+    variantFor: () => '2152668',
+    profile: null,
+  });
+  assert.equal(r.reason, 'wrong-id-kind');
+});
+
 test('no profile is a different failure, and says something a user can act on', () => {
   const r = checkoutTarget({ plan: pro, period: 'monthly', base: BASE, variantFor, profile: null });
   assert.equal(r.ok, false);

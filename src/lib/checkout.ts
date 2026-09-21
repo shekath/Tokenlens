@@ -9,7 +9,19 @@
 
 import type { Plan } from './entitlements';
 
-export type CheckoutFailure = 'unconfigured' | 'no-account';
+export type CheckoutFailure = 'unconfigured' | 'wrong-id-kind' | 'no-account';
+
+/**
+ * A Lemon Squeezy checkout link ends in the variant's UUID. The webhook, on the
+ * other hand, reports `attributes.variant_id` as a plain number, and that
+ * number is what the Edge Function's LEMON_*_VARIANT_IDS secrets hold.
+ *
+ * The two are easy to swap, they are configured in different places hours
+ * apart, and the only symptom of swapping them is a 404 on Lemon Squeezy's own
+ * domain after the customer has already decided to pay. An all-digits value
+ * here is that mistake, so name it rather than building a link that cannot work.
+ */
+const NUMERIC_ID = /^\d+$/;
 
 export type CheckoutTarget =
   | { ok: true; url: string }
@@ -38,6 +50,18 @@ export function checkoutTarget({
   const variant =
     (period === 'annual' ? variantFor(plan.variantEnv.annual) : null) ??
     variantFor(plan.variantEnv.monthly);
+
+  if (variant && NUMERIC_ID.test(variant)) {
+    return {
+      ok: false,
+      reason: 'wrong-id-kind',
+      message:
+        `The ${plan.name} variant is configured as a number (${variant}). A checkout ` +
+        'link needs the variant UUID — the last part of its "Copy checkout URL" in ' +
+        'Lemon Squeezy. The number is the one the webhook uses, and belongs in the ' +
+        'Edge Function secrets instead.',
+    };
+  }
 
   if (!base || !variant) {
     return {

@@ -71,13 +71,25 @@ if (target) {
 let missing = 0;
 console.log('Browser half (checkout links)\n');
 
+let wrongKind = 0;
+
 for (const key of KEYS) {
   const value = found[key] ?? '';
   const placeholder = /your-store|your-project|^$/.test(value);
   const ok = !placeholder;
   if (!ok && !OPTIONAL.has(key)) missing += 1;
-  const mark = ok ? 'set  ' : OPTIONAL.has(key) ? 'unset' : 'MISSING';
+
+  // An all-digits variant is the webhook's id pasted into the browser's slot.
+  // The checkout link needs the UUID; the number produces a 404 on Lemon
+  // Squeezy's own domain, after the customer has decided to pay.
+  const numeric = ok && key.startsWith('VITE_LEMON_VARIANT') && /^\d+$/.test(value);
+  if (numeric) wrongKind += 1;
+
+  const mark = numeric ? 'WRONG ID' : ok ? 'set  ' : OPTIONAL.has(key) ? 'unset' : 'MISSING';
   console.log(`  ${mark.padEnd(8)} ${key}${ok ? ` = ${value}` : ''}`);
+  if (numeric) {
+    console.log('           ^ that is the numeric webhook id; this slot needs the variant UUID');
+  }
 }
 
 console.log(`
@@ -97,8 +109,15 @@ Server half (which tier a purchase grants)
   log, which is how you find the number if you set the wrong one.
 `);
 
+if (wrongKind) {
+  console.error(
+    `${wrongKind} variant id${wrongKind === 1 ? ' is' : 's are'} the numeric kind. A checkout ` +
+      'link ends in the variant UUID - the last path segment of "Copy checkout URL" in Lemon ' +
+      'Squeezy. The numbers belong in LEMON_PRO_VARIANT_IDS / LEMON_TEAM_VARIANT_IDS instead.',
+  );
+}
 if (missing) {
   console.error(`${missing} required value${missing === 1 ? '' : 's'} missing.`);
-  process.exit(1);
 }
+if (missing || wrongKind) process.exit(1);
 console.log('Browser half complete.');

@@ -135,13 +135,19 @@ VITE_LEMON_VARIANT_*        card + tax                     LEMON_*_VARIANT_IDS
     [user_id]  ────────────────────────────────────────►  profiles.tier
 ```
 
-The two ends use **different identifiers for the same variant**, which is the
-easiest thing here to get wrong:
+The two ends use **different identifiers for the same variant**, and swapping
+them is the easiest mistake here to make:
 
-| Where | Which id | Used for |
-|---|---|---|
-| `VITE_LEMON_VARIANT_*` | the variant's share id, from its checkout link | building the checkout URL |
-| `LEMON_PRO_VARIANT_IDS` / `LEMON_TEAM_VARIANT_IDS` | the numeric `variant_id` | deciding which tier a payment grants |
+| Where | Which id | Looks like | Where to find it |
+|---|---|---|---|
+| `VITE_LEMON_VARIANT_*` (repository Variables) | the variant **UUID** | `9d4e1f2a-7c3b-4e5d-8a9f-1b2c3d4e5f60` | the last path segment of the variant's **Copy checkout URL** |
+| `LEMON_PRO_VARIANT_IDS` / `LEMON_TEAM_VARIANT_IDS` (function secrets) | the **numeric** `variant_id` | `2152668` | the variant's row in the dashboard, and `attributes.variant_id` in any webhook payload |
+
+Put the number in the browser slot and Lemon Squeezy answers the checkout link
+with a 404 — on its own domain, after the customer has decided to pay. So both
+`checkoutTarget()` and `scripts/billing-preflight.mjs` reject an all-digits
+value outright and say which id is wanted; the deploy log reports it as
+`WRONG ID` before anyone clicks.
 
 A variant in neither server-side list is refused with a 500 whose body names
 it — `variant 481516 is in neither LEMON_PRO_VARIANT_IDS nor
@@ -192,9 +198,9 @@ Actions → Variables), then re-run the deploy workflow:
 
 ```
 VITE_LEMON_CHECKOUT_URL         = https://<your-store>.lemonsqueezy.com/checkout/buy
-VITE_LEMON_VARIANT_PRO_MONTHLY  = <share id of Pro Monthly>
-VITE_LEMON_VARIANT_PRO_ANNUAL   = <share id of Pro Annual>
-VITE_LEMON_VARIANT_TEAM_MONTHLY = <share id of Team Monthly>
+VITE_LEMON_VARIANT_PRO_MONTHLY  = <UUID of Pro Monthly>
+VITE_LEMON_VARIANT_PRO_ANNUAL   = <UUID of Pro Annual>
+VITE_LEMON_VARIANT_TEAM_MONTHLY = <UUID of Team Monthly>
 ```
 
 `npm run billing-preflight -- dist` reads the built bundle and reports which of
