@@ -256,6 +256,7 @@ src/
     profile.ts       profile writes and password changes
     profileFields.ts field rules, mirroring the table's check constraints
     countries.ts     ISO 3166-1 alpha-2, named through Intl
+    menuPlacement.ts dropdown placement arithmetic, clamped to the viewport
     subscription.ts  plan, entitlements and checkout
     estimates.ts     saved-estimate CRUD
     scale.ts         axis ticks, bar geometry, label fitting

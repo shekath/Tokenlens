@@ -6,8 +6,9 @@
  *   node scripts/visual-check.mjs [outputDir]
  *
  * Fails (exit 1) on a horizontal page scroll at any tested width, on an SVG label
- * that spills outside its own chart, and on any console or page error. Writes a
- * full-page screenshot per configuration when an output directory is given.
+ * that spills outside its own chart, on a floating panel that hangs off either
+ * edge of the viewport, and on any console or page error. Writes a full-page
+ * screenshot per configuration when an output directory is given.
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -71,13 +72,31 @@ for (const cfg of CONFIGS) {
           if (tb.width && (tb.right > b.right + 1 || tb.left < b.left - 1)) spill.push(t.textContent);
         }
       }
-      return { scrollWidth: doc.scrollWidth, clientWidth: doc.clientWidth, spill };
+      // Anything that floats over the page: a dropdown, an open dialog. The
+      // page's own scrollWidth does not catch these - it does not grow for
+      // overflow to the LEFT, which is how a menu panel sitting at x=-115 on
+      // every phone width went unnoticed. So measure them directly.
+      const adrift = [];
+      for (const el of document.querySelectorAll('[data-floating], dialog[open]')) {
+        const b = el.getBoundingClientRect();
+        if (b.width === 0 && b.height === 0) continue;
+        if (b.left < -1 || b.right > doc.clientWidth + 1) {
+          adrift.push(
+            `${el.tagName.toLowerCase()}${el.className ? '.' + String(el.className).split(' ')[0] : ''}` +
+              ` at ${Math.round(b.left)}..${Math.round(b.right)} in 0..${doc.clientWidth}`,
+          );
+        }
+      }
+      return { scrollWidth: doc.scrollWidth, clientWidth: doc.clientWidth, spill, adrift };
     });
     if (r.scrollWidth > r.clientWidth + 1) {
       problems.push(`${cfg.name} / ${where}: horizontal page scroll (${r.scrollWidth} > ${r.clientWidth})`);
     }
     if (r.spill.length) {
       problems.push(`${cfg.name} / ${where}: chart labels outside their SVG - ${r.spill.slice(0, 4).join(', ')}`);
+    }
+    for (const a of r.adrift) {
+      problems.push(`${cfg.name} / ${where}: floating panel outside the viewport - ${a}`);
     }
   };
 

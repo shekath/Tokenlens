@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { Dialog } from './Dialog';
 import { countryOptions } from '../lib/countries';
@@ -12,10 +12,52 @@ import {
   phoneProblem,
 } from '../lib/profileFields';
 import { passwordProblem } from '../lib/auth';
+import { panelOffsetLeft } from '../lib/menuPlacement';
 import type { Profile } from '../lib/subscription';
 import type { Tier } from '../lib/entitlements';
 
 type Section = 'details' | 'password';
+
+/**
+ * Where the dropdown goes. The arithmetic, and why the old rule was wrong, is
+ * in lib/menuPlacement.ts; this is the part that has to touch the DOM.
+ *
+ * Absolute rather than fixed on purpose: .topbar carries a backdrop-filter,
+ * which makes it the containing block for fixed descendants, so a fixed panel
+ * would silently be positioned against the header instead of the viewport.
+ */
+function usePanelOffset(open: boolean, wrap: React.RefObject<HTMLDivElement | null>, panel: React.RefObject<HTMLDivElement | null>) {
+  const [left, setLeft] = useState<number | null>(null);
+
+  const place = useCallback(() => {
+    const w = wrap.current?.getBoundingClientRect();
+    const p = panel.current?.getBoundingClientRect();
+    if (!w || !p) return;
+    setLeft(
+      panelOffsetLeft({
+        anchorLeft: w.left,
+        anchorRight: w.right,
+        panelWidth: p.width,
+        viewportWidth: window.innerWidth,
+      }),
+    );
+  }, [wrap, panel]);
+
+  // Before paint, so the panel is never shown in the wrong place first.
+  useLayoutEffect(() => {
+    if (!open) {
+      setLeft(null);
+      return;
+    }
+    place();
+    // Vertical scroll cannot change this: the panel is absolute, so it moves
+    // with the trigger. A resize or a rotation can.
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [open, place]);
+
+  return left;
+}
 
 /**
  * The signed-in user's menu.
@@ -42,7 +84,9 @@ export function ProfileMenu({
   const [open, setOpen] = useState(false);
   const [section, setSection] = useState<Section | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const panelLeft = usePanelOffset(open, wrap, panel);
 
   const email = profile?.email ?? user.email ?? '';
   const name = greetingName({
@@ -98,7 +142,20 @@ export function ProfileMenu({
       </button>
 
       {open ? (
-        <div className="pmenu__panel" role="menu" aria-label="Account">
+        <div
+          className="pmenu__panel"
+          role="menu"
+          aria-label="Account"
+          data-floating=""
+          ref={panel}
+          style={
+            panelLeft === null
+              ? // First layout pass: measured, not yet placed. Hidden rather
+                // than parked off-screen, so it cannot flash at the wrong edge.
+                { visibility: 'hidden' }
+              : { left: panelLeft, right: 'auto' }
+          }
+        >
           <div className="pmenu__head">
             <span className="pmenu__avatar pmenu__avatar--lg" aria-hidden="true">
               {initialsOf(name)}
