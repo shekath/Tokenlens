@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { REDIRECT_PARAMS, redirectProblem } from './authRedirect';
 
 export interface AuthState {
   user: User | null;
   session: Session | null;
   /** False until the first session check resolves, so the UI does not flash. */
   ready: boolean;
+  /**
+   * Why a redirect-based sign-in (OAuth, magic link, email confirmation) came
+   * back without a session. Null when nothing came back or it worked.
+   */
+  redirectError: string | null;
 }
 
 export interface AuthActions {
@@ -15,18 +21,23 @@ export interface AuthActions {
   signInWithMagicLink: (email: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+  dismissRedirectError: () => void;
 }
 
 /**
  * Where an auth flow should return to.
  *
  * Supabase only honours a redirect that is on the project's allow list; anything
- * else is silently replaced by the Site URL. So this has to match an entry under
- * Authentication -> URL Configuration exactly, including the /Tokenlens/ path
- * that GitHub Pages serves the app from.
+ * else is silently replaced by the Site URL, and the user lands wherever that
+ * points (localhost, on a project whose URL configuration was never changed)
+ * with the one-time code in the address bar of a page that cannot spend it.
+ *
+ * Built from BASE_URL rather than the current pathname so it is the same string
+ * on every page of the app - /Tokenlens/ in a production build, / in dev. One
+ * value to allow-list, not one per route the user happened to sign in from.
  */
 function redirectTarget(): string {
-  return window.location.origin + window.location.pathname;
+  return window.location.origin + import.meta.env.BASE_URL;
 }
 
 /**
@@ -40,20 +51,44 @@ export function useAuth(): AuthState & AuthActions {
     user: null,
     session: null,
     ready: !supabase,
+    redirectError: null,
   });
 
   useEffect(() => {
     if (!supabase) return;
     let live = true;
 
+    // Read before getSession(): the client strips `code` from the URL itself
+    // once it has exchanged it, so afterwards there is no way to tell a return
+    // from a plain page load.
+    const params = new URLSearchParams(window.location.search);
+    const returned = REDIRECT_PARAMS.some((k) => params.has(k));
+
+    // getSession() waits on the client's own initialisation, which is what
+    // consumes the code in the URL. So by the time this resolves the exchange
+    // has either happened or failed, and a missing session is a real answer.
     supabase.auth.getSession().then(({ data }) => {
       if (!live) return;
-      setState({ user: data.session?.user ?? null, session: data.session, ready: true });
+      setState({
+        user: data.session?.user ?? null,
+        session: data.session,
+        ready: true,
+        redirectError: returned ? redirectProblem(params, data.session) : null,
+      });
+      if (!returned) return;
+      const url = new URL(window.location.href);
+      for (const key of REDIRECT_PARAMS) url.searchParams.delete(key);
+      window.history.replaceState({}, '', url.toString());
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!live) return;
-      setState({ user: session?.user ?? null, session, ready: true });
+      setState((prev) => ({
+        user: session?.user ?? null,
+        session,
+        ready: true,
+        redirectError: session ? null : prev.redirectError,
+      }));
     });
 
     return () => {
@@ -120,7 +155,19 @@ export function useAuth(): AuthState & AuthActions {
     if (error) throw error;
   }, []);
 
-  return { ...state, signUp, signIn, signInWithMagicLink, signInWithGoogle, signOut };
+  const dismissRedirectError = useCallback(() => {
+    setState((prev) => (prev.redirectError ? { ...prev, redirectError: null } : prev));
+  }, []);
+
+  return {
+    ...state,
+    signUp,
+    signIn,
+    signInWithMagicLink,
+    signInWithGoogle,
+    signOut,
+    dismissRedirectError,
+  };
 }
 
 /** Password rules, enforced here so the form can explain them before submitting. */

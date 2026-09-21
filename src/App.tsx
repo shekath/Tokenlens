@@ -434,6 +434,15 @@ export default function App() {
           />
         ) : null}
 
+        {auth.redirectError ? (
+          <p className="notice notice--error" style={{ marginTop: 14 }} role="alert">
+            <strong>Sign-in did not complete.</strong> {auth.redirectError}{' '}
+            <button type="button" className="btn btn--ghost" onClick={auth.dismissRedirectError}>
+              Dismiss
+            </button>
+          </p>
+        ) : null}
+
         {sub.preview ? (
           <p className="notice notice--warn" style={{ marginTop: 14 }} role="status">
             <strong>Preview mode.</strong> Paid features are unlocked locally by the{' '}

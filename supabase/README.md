@@ -66,9 +66,48 @@ which then redirects to the app. Copy the client ID and secret.
 **2. Supabase dashboard** — Authentication → Providers → Google → enable, paste
 the client ID and secret.
 
-The same redirect allow list governs where the user lands afterwards, so
-Authentication → URL Configuration must contain the app's URL or OAuth will
-finish at the Site URL instead (localhost, by default).
+**3. Supabase dashboard** — Authentication → URL Configuration. This is a
+separate allow list from Google's, and it decides where the user lands *after*
+Supabase has signed them in:
+
+| Field | Value |
+| --- | --- |
+| Site URL | `https://shekath.github.io/Tokenlens/` |
+| Redirect URLs | `https://shekath.github.io/Tokenlens/**`, `http://localhost:5173/**` |
+
+The app asks to return to `window.location.origin + BASE_URL`, which is
+`https://shekath.github.io/Tokenlens/` in a production build and
+`http://localhost:5173/` in dev — one value per deployment, whatever page the
+user signed in from.
+
+### When sign-in silently does nothing
+
+Step 3 fails quietly, which makes it worth knowing how to check. Supabase does
+not reject an un-allow-listed redirect; it substitutes the Site URL. The
+sign-in works, the account is created, and the one-time code is handed to a
+page that cannot spend it — on a fresh project, `http://localhost:3000`, which
+on a phone is nothing at all.
+
+What that looks like in the database: a user row and an identity row exist, and
+`auth.sessions` and `auth.refresh_tokens` are empty. The flow's recorded
+destination is the proof:
+
+```sql
+select created_at, authentication_method, referrer, auth_code_issued_at
+  from auth.flow_state order by created_at desc limit 5;
+```
+
+`referrer` is where the browser was actually sent. If it reads
+`http://localhost:3000` while the app asked for the Pages URL, the redirect was
+not on the allow list — the substitution has already happened, and no amount of
+retrying from the app will change it. Fix step 3 and sign in again; the config
+reloads within seconds (`auth_logs` records "reloading api with new
+configuration").
+
+The app now says so too: landing back with a code that produces no session
+raises "Sign-in did not complete" rather than rendering a signed-out page. That
+only helps when the browser makes it back, though — a redirect to localhost
+never reaches the app at all.
 
 ### Account linking
 
