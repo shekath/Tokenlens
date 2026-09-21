@@ -30,6 +30,8 @@ import { compact, num, pct, ratio, usd } from './lib/format';
 import { useTheme, usePersisted } from './lib/useTheme';
 import { useAuth } from './lib/auth';
 import { ProfileMenu } from './components/ProfileMenu';
+import { TabBoundary } from './components/TabBoundary';
+import { retryImport } from './lib/lazyChunk';
 import { useSubscription, type Profile } from './lib/subscription';
 import { hasBackend } from './lib/supabase';
 import type { User } from '@supabase/supabase-js';
@@ -40,17 +42,28 @@ import type { ProposalLine } from './lib/proposal';
 import { Composer } from './components/Composer';
 import { Assumptions } from './components/Assumptions';
 import { AnalyseTab } from './components/AnalyseTab';
+// retryImport, not a bare import: a browser holding the previous index.html
+// asks for chunk hashes this deploy no longer has, and an unhandled rejection
+// there used to blank the page. See lib/lazyChunk.ts.
 const CacheSimulator = lazy(() =>
-  import('./components/CacheSimulator').then((m) => ({ default: m.CacheSimulator })),
+  retryImport(() => import('./components/CacheSimulator'), 'Cache ROI').then((m) => ({
+    default: m.CacheSimulator,
+  })),
 );
 const TokenTrimmer = lazy(() =>
-  import('./components/TokenTrimmer').then((m) => ({ default: m.TokenTrimmer })),
+  retryImport(() => import('./components/TokenTrimmer'), 'Trimmer').then((m) => ({
+    default: m.TokenTrimmer,
+  })),
 );
 const BatchForecaster = lazy(() =>
-  import('./components/BatchForecaster').then((m) => ({ default: m.BatchForecaster })),
+  retryImport(() => import('./components/BatchForecaster'), 'Batch').then((m) => ({
+    default: m.BatchForecaster,
+  })),
 );
 const ProposalBuilder = lazy(() =>
-  import('./components/ProposalBuilder').then((m) => ({ default: m.ProposalBuilder })),
+  retryImport(() => import('./components/ProposalBuilder'), 'Proposal').then((m) => ({
+    default: m.ProposalBuilder,
+  })),
 );
 import { SavedEstimates } from './components/SavedEstimates';
 import { ProGatekeeper } from './components/ProGatekeeper';
@@ -543,6 +556,7 @@ export default function App() {
                 unlocked={sub.can(t.feature!)}
                 onUpgrade={openPricing}
               >
+                <TabBoundary label={t.label}>
                 <Suspense fallback={<div className="empty">Loading…</div>}>
                   {t.id === 'cache' ? (
                   <CacheSimulator
@@ -570,6 +584,7 @@ export default function App() {
                     />
                   )}
                 </Suspense>
+                </TabBoundary>
               </ProGatekeeper>
             ) : null,
           )}
