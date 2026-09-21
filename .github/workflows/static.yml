@@ -89,6 +89,15 @@ jobs:
           fi
           echo "Confirmed: no service-role key in the bundle."
 
+      # Billing has the same failure mode as the Supabase config and one more
+      # besides: a checkout variable that never reaches the bundle produces a
+      # site where the Upgrade button cannot open anything. This reads the
+      # built bundle back and prints what shipped. Report-only - a deployment
+      # without billing configured is a supported state, not a broken build.
+      - name: Report billing configuration
+        if: always()
+        run: node scripts/billing-preflight.mjs dist || true
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

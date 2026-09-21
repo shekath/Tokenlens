@@ -8,6 +8,7 @@ export function PricingDialog({
   onClose,
   currentTier,
   signedIn,
+  error,
   onCheckout,
   onNeedAccount,
 }: {
@@ -15,6 +16,8 @@ export function PricingDialog({
   onClose: () => void;
   currentTier: Tier;
   signedIn: boolean;
+  /** Why the last checkout attempt did not open, or null. */
+  error: string | null;
   onCheckout: (plan: Plan, period: 'monthly' | 'annual') => void;
   onNeedAccount: () => void;
 }) {
@@ -22,6 +25,12 @@ export function PricingDialog({
 
   return (
     <Dialog open={open} onClose={onClose} title="Plans" wide>
+      {error ? (
+        <p className="notice notice--error" role="alert" style={{ marginBottom: 14 }}>
+          {error}
+        </p>
+      ) : null}
+
       <div className="row" style={{ justifyContent: 'center', marginBottom: 18 }}>
         <div className="segmented" role="group" aria-label="Billing period">
           {(['monthly', 'annual'] as const).map((p) => (

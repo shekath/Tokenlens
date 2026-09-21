@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { checkoutBase, supabase, variantId } from './supabase';
 import { effectiveTier } from './billing';
+import { checkoutTarget, openCheckoutWindow } from './checkout';
 import {
   entitlementsFor,
   type Entitlements,
@@ -38,7 +39,14 @@ export interface SubscriptionState {
   error: string | null;
   can: (feature: Feature) => boolean;
   refresh: () => Promise<void>;
-  openCheckout: (plan: Plan, period: 'monthly' | 'annual') => void;
+  /**
+   * Returns false when no checkout could be opened, so the caller can leave
+   * the pricing dialog up instead of closing it over a failure.
+   */
+  openCheckout: (plan: Plan, period: 'monthly' | 'annual') => boolean;
+  /** Why the last checkout attempt failed, or null. */
+  checkoutError: string | null;
+  dismissCheckoutError: () => void;
 }
 
 /**
@@ -75,6 +83,7 @@ export function useSubscription(user: User | null): SubscriptionState {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!supabase || !user) {
@@ -147,38 +156,23 @@ export function useSubscription(user: User | null): SubscriptionState {
   const entitlements = entitlementsFor(tier);
 
   const openCheckout = useCallback(
-    (plan: Plan, period: 'monthly' | 'annual') => {
-      // An annual variant is optional. Falling back here as well as in the
-      // pricing dialog means a plan priced annually but not yet configured
-      // sells at its monthly rate rather than showing a configuration error to
-      // a customer holding a card.
-      const variant =
-        (period === 'annual' ? variantId(plan.variantEnv.annual) : null) ??
-        variantId(plan.variantEnv.monthly);
+    (plan: Plan, period: 'monthly' | 'annual'): boolean => {
+      const target = checkoutTarget({
+        plan,
+        period,
+        base: checkoutBase,
+        variantFor: variantId,
+        profile,
+      });
 
-      if (!checkoutBase || !variant) {
-        setError(
-          'Checkout is not configured for this deployment. Set VITE_LEMON_CHECKOUT_URL and the plan variant ids.',
-        );
-        return;
+      if (!target.ok) {
+        setCheckoutError(target.message);
+        return false;
       }
 
-      // custom[user_id] is what the webhook reads back to find the account to
-      // upgrade. Without it the payment goes through and nothing is
-      // provisioned, so this refuses to open the checkout at all rather than
-      // take money it cannot honour. The row is created by a trigger at
-      // sign-up, so the only way here is a checkout clicked in the moment
-      // between signing in and the profile arriving.
-      if (!profile?.id) {
-        setError('Your account is still loading. Try again in a moment.');
-        return;
-      }
-
-      const url = new URL(`${checkoutBase.replace(/\/$/, '')}/${variant}`);
-      url.searchParams.set('checkout[custom][user_id]', profile.id);
-      if (profile.email) url.searchParams.set('checkout[email]', profile.email);
-      url.searchParams.set('embed', '0');
-      window.open(url.toString(), '_blank', 'noopener,noreferrer');
+      setCheckoutError(null);
+      openCheckoutWindow(target.url);
+      return true;
     },
     [profile],
   );
@@ -195,5 +189,7 @@ export function useSubscription(user: User | null): SubscriptionState {
     can: (feature: Feature) => entitlements.features[feature],
     refresh: load,
     openCheckout,
+    checkoutError,
+    dismissCheckoutError: () => setCheckoutError(null),
   };
 }

@@ -447,6 +447,14 @@ export default function App() {
           </p>
         ) : null}
 
+        {sub.error ? (
+          <p className="notice notice--error" style={{ marginTop: 14 }} role="alert">
+            <strong>Your account could not be loaded.</strong> {sub.error} Paid features
+            will read as unavailable until this clears — nothing has been lost, and
+            reloading usually fixes it.
+          </p>
+        ) : null}
+
         {sub.preview ? (
           <p className="notice notice--warn" style={{ marginTop: 14 }} role="status">
             <strong>Preview mode.</strong> Paid features are unlocked locally by the{' '}
@@ -604,12 +612,17 @@ export default function App() {
       />
       <PricingDialog
         open={pricingOpen}
-        onClose={() => setPricingOpen(false)}
+        onClose={() => {
+          setPricingOpen(false);
+          sub.dismissCheckoutError();
+        }}
         currentTier={sub.tier}
         signedIn={Boolean(auth.user)}
+        error={sub.checkoutError}
         onCheckout={(plan: Plan, period) => {
-          sub.openCheckout(plan, period);
-          setPricingOpen(false);
+          // Only on success. Closing regardless is what made a failed checkout
+          // look like the dialog simply vanishing.
+          if (sub.openCheckout(plan, period)) setPricingOpen(false);
         }}
         onNeedAccount={() => {
           setPricingOpen(false);
