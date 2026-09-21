@@ -117,13 +117,31 @@ export function checkoutTarget({
 /**
  * Opens the checkout, in a new tab if the browser allows one.
  *
- * window.open returns null when a popup blocker stops it, and that is not rare
- * on mobile even from inside a click handler. Returning early there would be
- * the same dead end as everything else here, so fall back to navigating this
- * tab: leaving the page is a worse experience than a second tab, and it is a
- * far better one than a button that does nothing.
+ * A popup blocker makes window.open return null, and that is not rare on
+ * mobile even from inside a click handler. Returning early there would be the
+ * same dead end as every other failure here, so fall back to navigating this
+ * tab: leaving the page is worse than a second tab, and far better than a
+ * button that does nothing.
+ *
+ * The feature string is deliberately empty. Passing 'noopener,noreferrer' -
+ * which the first version did - makes window.open return null *on success*
+ * too, because the spec says so when either is present. The fallback then ran
+ * every single time, and the checkout opened twice: once in the new tab, and
+ * once over the page the customer was standing on. Null has to mean blocked
+ * for this to work at all.
  */
 export function openCheckoutWindow(url: string, win: Window = window): void {
-  const opened = win.open(url, '_blank', 'noopener,noreferrer');
-  if (!opened) win.location.assign(url);
+  const opened = win.open(url, '_blank');
+  if (!opened) {
+    win.location.assign(url);
+    return;
+  }
+  // Hand back the property the feature string was there for: the checkout page
+  // must not be able to script the tab that opened it.
+  try {
+    opened.opener = null;
+  } catch {
+    // Some browsers refuse the assignment cross-origin. The tab is already
+    // open by then, and there is nothing useful to do about it.
+  }
 }

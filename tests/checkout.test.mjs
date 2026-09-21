@@ -191,3 +191,51 @@ test('and an allowed popup leaves the page alone', () => {
   openCheckoutWindow('https://example.com/c', allowed);
   assert.deepEqual(calls, [['open', 'https://example.com/c']]);
 });
+
+test('no noopener or noreferrer, because either makes open() return null', () => {
+  // The regression this exists for: with 'noopener,noreferrer' in the feature
+  // string, window.open returns null even when it succeeds, so the
+  // blocked-popup fallback ran every time and the checkout opened twice - in a
+  // new tab AND over the page the customer was on.
+  let features;
+  const win = {
+    open: (_u, _t, f) => {
+      features = f;
+      return {};
+    },
+    location: { assign: () => assert.fail('should not navigate on a successful open') },
+  };
+  openCheckoutWindow('https://example.com/c', win);
+  assert.ok(
+    features === undefined || !/noopener|noreferrer/.test(features),
+    `feature string must not disable the return value, got ${features}`,
+  );
+});
+
+test('the opened tab cannot script the one that opened it', () => {
+  // What the feature string was there for, done in a way that keeps the
+  // success signal.
+  const opened = { opener: 'the original window' };
+  openCheckoutWindow('https://example.com/c', {
+    open: () => opened,
+    location: { assign: () => assert.fail('should not navigate') },
+  });
+  assert.equal(opened.opener, null);
+});
+
+test('a browser that refuses to clear opener still gets its tab', () => {
+  const opened = {
+    set opener(_v) {
+      throw new Error('cross-origin');
+    },
+    get opener() {
+      return 'untouched';
+    },
+  };
+  assert.doesNotThrow(() =>
+    openCheckoutWindow('https://example.com/c', {
+      open: () => opened,
+      location: { assign: () => assert.fail('should not navigate') },
+    }),
+  );
+});
