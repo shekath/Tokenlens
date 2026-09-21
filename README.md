@@ -257,6 +257,7 @@ src/
     profileFields.ts field rules, mirroring the table's check constraints
     countries.ts     ISO 3166-1 alpha-2, named through Intl
     menuPlacement.ts dropdown placement arithmetic, clamped to the viewport
+    billing.ts       effective tier and the one line of subscription state
     subscription.ts  plan, entitlements and checkout
     estimates.ts     saved-estimate CRUD
     scale.ts         axis ticks, bar geometry, label fitting
@@ -267,7 +268,7 @@ supabase/
   migrations/        schema, RLS policies, triggers
   functions/         the Lemon Squeezy webhook
 tests/               unit tests (node:test, run against the TypeScript directly)
-scripts/             browser-based layout checks
+scripts/             browser-based layout checks, billing config preflight
 ```
 
 ### Performance

@@ -411,6 +411,82 @@ select assert(
 );
 
 \echo ''
+\echo '== a cancelled subscription expires without waiting for a webhook =='
+-- The webhook leaves the tier alone when Lemon Squeezy says "cancelled",
+-- because the customer has paid to the end of the period. If the expiry event
+-- is then missed, only the database stops the entitlement.
+--
+-- Its own user, so the assertions do not depend on what earlier sections left
+-- lying around.
+select test_reset();
+
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('44444444-4444-4444-4444-444444444444', 'dana@example.com', '{"full_name":"Dana"}');
+
+select test_as_service();
+update public.profiles
+   set tier = 'pro', subscription_status = 'active',
+       current_period_end = timezone('utc', now()) + interval '10 days'
+ where id = '44444444-4444-4444-4444-444444444444';
+
+select assert(
+  private.current_tier('44444444-4444-4444-4444-444444444444') = 'pro',
+  'an active subscription enforces its tier'
+);
+
+update public.profiles set subscription_status = 'cancelled'
+ where id = '44444444-4444-4444-4444-444444444444';
+
+select assert(
+  private.current_tier('44444444-4444-4444-4444-444444444444') = 'pro',
+  'a cancellation keeps the tier until the paid period ends'
+);
+
+update public.profiles set current_period_end = timezone('utc', now()) - interval '1 minute'
+ where id = '44444444-4444-4444-4444-444444444444';
+
+select assert(
+  private.current_tier('44444444-4444-4444-4444-444444444444') = 'free',
+  'and drops it the moment that period is over, with no event needed'
+);
+
+-- The narrow part: a paying customer is not locked out by a renewal webhook we
+-- have not processed yet.
+update public.profiles
+   set subscription_status = 'active',
+       current_period_end = timezone('utc', now()) - interval '1 day'
+ where id = '44444444-4444-4444-4444-444444444444';
+
+select assert(
+  private.current_tier('44444444-4444-4444-4444-444444444444') = 'pro',
+  'an overdue renewal on an active subscription does not revoke access'
+);
+
+-- And both policies read that function, so the free-tier cap comes back with it.
+update public.profiles
+   set subscription_status = 'cancelled',
+       current_period_end = timezone('utc', now()) - interval '1 day'
+ where id = '44444444-4444-4444-4444-444444444444';
+
+select test_as_user('44444444-4444-4444-4444-444444444444');
+
+insert into public.saved_estimates (user_id, project_title, model_id, input_tokens, output_tokens, estimated_cost_usd)
+select '44444444-4444-4444-4444-444444444444', 'lapsed ' || i, 'gpt-5', 10, 10, 0.001
+  from generate_series(1, 3) as i;
+
+do $$
+begin
+  insert into public.saved_estimates (user_id, project_title, model_id, input_tokens, output_tokens, estimated_cost_usd)
+  values ('44444444-4444-4444-4444-444444444444', 'the fourth', 'gpt-5', 10, 10, 0.001);
+  raise exception 'FAILED: a lapsed Pro account was still treated as Pro by the save cap';
+exception
+  when insufficient_privilege then
+    raise notice '  ok: the free-tier save cap applies again once the tier lapses';
+  when others then
+    raise exception 'FAILED: unexpected % (%)', sqlerrm, sqlstate;
+end $$;
+
+\echo ''
 \echo '== an empty claims string does not break profile updates =='
 -- current_setting(..., true) returns '' rather than NULL when the GUC is set
 -- empty. The first version of the guard only tested for NULL, reached

@@ -116,6 +116,134 @@ raises "Sign-in did not complete" rather than rendering a signed-out page. That
 only helps when the browser makes it back, though — a redirect to localhost
 never reaches the app at all.
 
+## Lemon Squeezy
+
+Lemon Squeezy is the merchant of record: it takes the payment, charges the
+right sales tax in the buyer's country and remits it. Nothing in this repo
+touches a card number, and no price lives in the database - `src/lib/
+entitlements.ts` is the only place a price is written down, and Lemon Squeezy
+is the only place one is charged.
+
+### What grants a tier
+
+```
+browser                     Lemon Squeezy                  Edge Function
+───────                     ─────────────                  ─────────────
+checkout link built from    hosted checkout,               webhook, HMAC-signed
+VITE_LEMON_VARIANT_*        card + tax                     LEMON_*_VARIANT_IDS
+  + checkout[custom]                                         ↓
+    [user_id]  ────────────────────────────────────────►  profiles.tier
+```
+
+The two ends use **different identifiers for the same variant**, which is the
+easiest thing here to get wrong:
+
+| Where | Which id | Used for |
+|---|---|---|
+| `VITE_LEMON_VARIANT_*` | the variant's share id, from its checkout link | building the checkout URL |
+| `LEMON_PRO_VARIANT_IDS` / `LEMON_TEAM_VARIANT_IDS` | the numeric `variant_id` | deciding which tier a payment grants |
+
+A variant in neither server-side list is refused with a 500 whose body names
+it — `variant 481516 is in neither LEMON_PRO_VARIANT_IDS nor
+LEMON_TEAM_VARIANT_IDS` — which Lemon Squeezy shows in its own delivery log.
+That is the intended way to discover the numeric id if the wrong value was
+pasted. It is a 5xx rather than a 4xx on purpose: Lemon Squeezy retries, so
+correcting the secret provisions the subscription without anyone re-paying.
+
+The earlier version defaulted anything unrecognised to Pro. A Team purchase
+made before `LEMON_TEAM_VARIANT_IDS` was set would have taken $39 and granted
+$12 of product, silently.
+
+### Setting it up
+
+**1. Store and product.** lemonsqueezy.com → Stores → create one. Then
+Products → New Product, subscription pricing, with three variants matching
+`PLANS` in `src/lib/entitlements.ts`:
+
+| Variant | Price | Interval |
+|---|---|---|
+| Pro Monthly | $12 | monthly |
+| Pro Annual | $99 | yearly |
+| Team Monthly | $39 | monthly |
+
+A single-variant product hides its variant in the UI; with three there is a
+variant list, and each row's "Share" link ends in the id the browser needs.
+
+**2. Webhook.** Settings → Webhooks → add:
+
+| Field | Value |
+|---|---|
+| URL | `https://iashboyuhcbhsrvkfsuk.supabase.co/functions/v1/lemon-webhook` |
+| Signing secret | anything long and random — you set it, then paste the same value into Supabase |
+| Events | `subscription_created`, `subscription_updated`, `subscription_cancelled`, `subscription_resumed`, `subscription_expired`, `subscription_paused`, `subscription_unpaused`, `subscription_payment_failed` |
+
+Any other event is acknowledged and ignored, so selecting more is harmless.
+
+**3. Edge Function secrets.** Supabase → Edge Functions → Secrets:
+
+```
+LEMON_SQUEEZY_WEBHOOK_SECRET = <the signing secret from step 2>
+LEMON_PRO_VARIANT_IDS        = <numeric id of Pro Monthly>,<numeric id of Pro Annual>
+LEMON_TEAM_VARIANT_IDS       = <numeric id of Team Monthly>
+```
+
+**4. GitHub repository variables** (Settings → Secrets and variables →
+Actions → Variables), then re-run the deploy workflow:
+
+```
+VITE_LEMON_CHECKOUT_URL         = https://<your-store>.lemonsqueezy.com/checkout/buy
+VITE_LEMON_VARIANT_PRO_MONTHLY  = <share id of Pro Monthly>
+VITE_LEMON_VARIANT_PRO_ANNUAL   = <share id of Pro Annual>
+VITE_LEMON_VARIANT_TEAM_MONTHLY = <share id of Team Monthly>
+```
+
+`npm run billing-preflight -- dist` reads the built bundle and reports which of
+those actually shipped. It cannot read the function secrets — nothing can, by
+design — so it prints them to compare by eye.
+
+**5. Test mode before live mode.** Lemon Squeezy's test mode issues real
+webhooks for fake payments; card `4242 4242 4242 4242` with any future expiry.
+Buy each of the three variants once and check the result:
+
+```sql
+select p.email, p.tier, p.subscription_status, p.current_period_end,
+       b.event_name, b.created_at
+  from public.profiles p
+  left join public.billing_events b on b.payload->'meta'->'custom_data'->>'user_id' = p.id::text
+ order by b.created_at desc;
+```
+
+A Team purchase showing `tier = 'pro'` means the variant lists are the wrong
+way round. Nothing at all means the webhook never arrived — Lemon Squeezy's
+delivery log has the response, and 401 means the signing secret does not match.
+
+### What each event does
+
+| Event | Effect |
+|---|---|
+| `subscription_created`, `subscription_updated`, `subscription_resumed`, `subscription_unpaused` | sets tier from the variant, records customer and subscription ids, records the period end |
+| `subscription_cancelled` | marks it cancelled and records `ends_at` — **the tier is left alone** |
+| `subscription_expired` | drops to free |
+| `subscription_paused` | drops to free |
+| `subscription_payment_failed` | marks past due; the tier is left alone while the card is retried |
+
+Cancelling does not remove access, because Lemon Squeezy's `cancelled` means
+"will not renew" and the customer has paid to `ends_at`. The tier drops at
+`subscription_expired` — or, if that webhook is missed, at `current_period_end`
+anyway, because `private.current_tier()` applies the deadline itself (migration
+0004). Both halves of that rule are asserted: in SQL in
+`supabase/tests/01_rls.sql`, and in the client's mirror of it in
+`tests/billing.test.mjs`.
+
+### Testing without charging a card
+
+`tests/lemonWebhook.test.mjs` runs every branch — each event, each status,
+unmapped variants, missing `user_id`, forged and truncated signatures — against
+the payload shapes Lemon Squeezy sends. The decision logic lives in
+`supabase/functions/lemon-webhook/decide.ts` with no Deno or network imports
+precisely so it can be imported by a node test. The billing path is the one
+part of this product that cannot be checked by using the product.
+
 ## The account reference
 
 Every profile carries a `public_id` — `TT-XXXXX-XXXXX`, ten characters over

@@ -13,6 +13,7 @@ import {
 } from '../lib/profileFields';
 import { passwordProblem } from '../lib/auth';
 import { panelOffsetLeft } from '../lib/menuPlacement';
+import { billingNotice, formatBillingDate } from '../lib/billing';
 import type { Profile } from '../lib/subscription';
 import type { Tier } from '../lib/entitlements';
 
@@ -171,6 +172,8 @@ export function ProfileMenu({
 
           <AccountId publicId={profile?.publicId ?? null} />
 
+          <BillingLine profile={profile} />
+
           <div className="pmenu__sep" role="separator" />
 
           <button type="button" role="menuitem" className="pmenu__item" onClick={() => openSection('details')}>
@@ -216,6 +219,30 @@ export function ProfileMenu({
         onSaved={onSaved}
       />
     </div>
+  );
+}
+
+/**
+ * The subscription's state in one line.
+ *
+ * Nothing showed this anywhere before, so a card that had failed or a
+ * subscription already cancelled was invisible until the features vanished.
+ */
+function BillingLine({ profile }: { profile: Profile | null }) {
+  const notice = profile
+    ? billingNotice({
+        tier: profile.tier,
+        status: profile.status,
+        currentPeriodEnd: profile.currentPeriodEnd,
+      })
+    : null;
+  if (!notice) return null;
+
+  return (
+    <p className={notice.tone === 'warn' ? 'pmenu__billing pmenu__billing--warn' : 'pmenu__billing'}>
+      {notice.prefix}
+      {notice.date ? ` ${formatBillingDate(notice.date)}` : ''}.
+    </p>
   );
 }
 

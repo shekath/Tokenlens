@@ -1543,3 +1543,29 @@ table.data tbody tr.is-on td:first-child {
   color: var(--text-secondary);
   background: var(--surface-2);
 }
+
+.pmenu__billing {
+  margin: 4px 0 0;
+  padding: 0 9px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* --warning is a 1.9:1 yellow against this surface: fine as a bar on a chart,
+   unreadable as 11px text. Weight and the primary colour carry the emphasis
+   instead, and the dot before it does the signalling. */
+.pmenu__billing--warn {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.pmenu__billing--warn::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  vertical-align: middle;
+}

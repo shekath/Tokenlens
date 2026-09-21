@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { checkoutBase, supabase, variantId } from './supabase';
+import { effectiveTier } from './billing';
 import {
   entitlementsFor,
   type Entitlements,
@@ -139,24 +140,43 @@ export function useSubscription(user: User | null): SubscriptionState {
   }, [user, load]);
 
   const preview = previewTier();
-  const tier: Tier = preview ?? profile?.tier ?? 'free';
+  // effectiveTier, not profile.tier: a cancelled subscription past its paid
+  // period is already free as far as Postgres is concerned, and offering a
+  // feature the database will refuse is worse than not offering it.
+  const tier: Tier = preview ?? effectiveTier(profile);
   const entitlements = entitlementsFor(tier);
 
   const openCheckout = useCallback(
     (plan: Plan, period: 'monthly' | 'annual') => {
-      const envKey = period === 'annual' ? plan.variantEnv.annual : plan.variantEnv.monthly;
-      const variant = variantId(envKey);
+      // An annual variant is optional. Falling back here as well as in the
+      // pricing dialog means a plan priced annually but not yet configured
+      // sells at its monthly rate rather than showing a configuration error to
+      // a customer holding a card.
+      const variant =
+        (period === 'annual' ? variantId(plan.variantEnv.annual) : null) ??
+        variantId(plan.variantEnv.monthly);
+
       if (!checkoutBase || !variant) {
         setError(
           'Checkout is not configured for this deployment. Set VITE_LEMON_CHECKOUT_URL and the plan variant ids.',
         );
         return;
       }
-      const url = new URL(`${checkoutBase.replace(/\/$/, '')}/${variant}`);
+
       // custom[user_id] is what the webhook reads back to find the account to
-      // upgrade; without it a completed payment cannot be matched to a user.
-      if (profile?.id) url.searchParams.set('checkout[custom][user_id]', profile.id);
-      if (profile?.email) url.searchParams.set('checkout[email]', profile.email);
+      // upgrade. Without it the payment goes through and nothing is
+      // provisioned, so this refuses to open the checkout at all rather than
+      // take money it cannot honour. The row is created by a trigger at
+      // sign-up, so the only way here is a checkout clicked in the moment
+      // between signing in and the profile arriving.
+      if (!profile?.id) {
+        setError('Your account is still loading. Try again in a moment.');
+        return;
+      }
+
+      const url = new URL(`${checkoutBase.replace(/\/$/, '')}/${variant}`);
+      url.searchParams.set('checkout[custom][user_id]', profile.id);
+      if (profile.email) url.searchParams.set('checkout[email]', profile.email);
       url.searchParams.set('embed', '0');
       window.open(url.toString(), '_blank', 'noopener,noreferrer');
     },
