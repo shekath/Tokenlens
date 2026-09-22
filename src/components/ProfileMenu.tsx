@@ -2,7 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { User } from '@supabase/supabase-js';
 import { Dialog } from './Dialog';
 import { countryOptions } from '../lib/countries';
-import { changeSubscription, hasPassword, saveProfile, setPassword } from '../lib/profile';
+import {
+  billingPortalUrl,
+  changeSubscription,
+  hasPassword,
+  saveProfile,
+  setPassword,
+} from '../lib/profile';
 import {
   countryProblem,
   displayNameProblem,
@@ -445,6 +451,25 @@ function SubscriptionPanel({
           ? 'The amount is what Lemon Squeezy last charged, tax included. It is the merchant of record and issues the receipts.'
           : 'No invoice has been recorded against this subscription yet. Lemon Squeezy has the receipts either way — it is the merchant of record.'}
       </p>
+
+      <button
+        type="button"
+        className="btn btn--ghost"
+        disabled={busy}
+        onClick={() => {
+          setError(null);
+          // Changing plan, the card on file and the invoices all live with the
+          // merchant of record. The link is signed and short-lived, so it is
+          // fetched at the moment it is wanted.
+          billingPortalUrl()
+            .then((url) => window.location.assign(url))
+            .catch((err) =>
+              setError(err instanceof Error ? err.message : 'Could not open the billing portal.'),
+            );
+        }}
+      >
+        Change plan, card or invoices
+      </button>
 
       {error ? <p className="notice notice--error">{error}</p> : null}
       {done ? <p className="notice notice--ok">{done}</p> : null}

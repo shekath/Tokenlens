@@ -633,7 +633,9 @@ export default function App() {
         }}
         currentTier={sub.tier}
         signedIn={Boolean(auth.user)}
+        hasSubscription={Boolean(sub.profile?.hasSubscription)}
         error={sub.checkoutError}
+        onManage={() => void sub.openBillingPortal()}
         onCheckout={(plan: Plan, period) => {
           // Only on success. Closing regardless is what made a failed checkout
           // look like the dialog simply vanishing.

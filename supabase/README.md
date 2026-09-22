@@ -200,7 +200,15 @@ figure to show even though the customer has been charged.
 LEMON_SQUEEZY_WEBHOOK_SECRET = <the signing secret from step 2>
 LEMON_PRO_VARIANT_IDS        = <numeric id of Pro Monthly>,<numeric id of Pro Annual>
 LEMON_TEAM_VARIANT_IDS       = <numeric id of Team Monthly>
+LEMON_SQUEEZY_API_KEY        = <Settings → API>
 ```
+
+**Set every one of these before taking a payment.** A variant missing from
+these lists is refused with a 500, which is the right answer — Lemon Squeezy
+retries, so correcting the secret provisions the subscription without anyone
+re-paying — but until it is corrected the customer has paid and has nothing.
+`function_logs` names the id: `variant 2152668 is in neither
+LEMON_PRO_VARIANT_IDS nor LEMON_TEAM_VARIANT_IDS`.
 
 **4. GitHub repository variables** (Settings → Secrets and variables →
 Actions → Variables), then re-run the deploy workflow:
@@ -231,6 +239,27 @@ select p.email, p.tier, p.subscription_status, p.current_period_end,
 A Team purchase showing `tier = 'pro'` means the variant lists are the wrong
 way round. Nothing at all means the webhook never arrived — Lemon Squeezy's
 delivery log has the response, and 401 means the signing secret does not match.
+
+### Never a second checkout
+
+A customer on one plan must not be able to buy another. Lemon Squeezy will
+happily sell them a second subscription — both bill, both renew — and this
+schema records **one** `lemon_subscription_id` per profile, so the newer one
+overwrites the older and the first keeps charging with no way to reach it from
+the app. That is exactly what happened here in test mode: a Pro purchase made
+while a Team subscription was active produced subscriptions 2548839 and
+2548862 alongside 2546402.
+
+So once `hasSubscription` is true, the pricing dialog offers **Switch to X**,
+which opens Lemon Squeezy's customer portal (`manage-subscription`, action
+`portal`). The portal prorates the change, charges the difference, applies the
+buyer's tax and keeps it to one subscription. The same link covers the card on
+file and the invoices, which is why the Subscription tab points at it too.
+
+Plan changes are deliberately **not** hand-rolled here. Doing so would mean
+mapping every (tier, period) to a numeric variant id in yet another secret —
+and a wrong variant id in a secret is precisely what stranded those two paid
+subscriptions.
 
 ### Keeping the open tab in step
 

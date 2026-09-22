@@ -8,17 +8,22 @@ export function PricingDialog({
   onClose,
   currentTier,
   signedIn,
+  hasSubscription,
   error,
   onCheckout,
+  onManage,
   onNeedAccount,
 }: {
   open: boolean;
   onClose: () => void;
   currentTier: Tier;
   signedIn: boolean;
+  /** True when a subscription already exists, whatever tier it is on. */
+  hasSubscription: boolean;
   /** Why the last checkout attempt did not open, or null. */
   error: string | null;
   onCheckout: (plan: Plan, period: 'monthly' | 'annual') => void;
+  onManage: () => void;
   onNeedAccount: () => void;
 }) {
   const [period, setPeriod] = useState<'monthly' | 'annual'>('monthly');
@@ -97,6 +102,15 @@ export function PricingDialog({
               ) : !signedIn ? (
                 <button type="button" className="btn btn--primary" onClick={onNeedAccount}>
                   Create an account
+                </button>
+              ) : hasSubscription ? (
+                // Never a second checkout. Buying again while a subscription
+                // is active creates a SECOND subscription - the customer pays
+                // twice, and this app records one subscription id per profile,
+                // so the first is silently forgotten and keeps billing with no
+                // way to reach it from here. Lemon Squeezy prorates a switch.
+                <button type="button" className="btn btn--primary" onClick={onManage}>
+                  Switch to {plan.name}
                 </button>
               ) : (
                 <button

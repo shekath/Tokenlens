@@ -3,6 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import { checkoutBase, supabase, variantId } from './supabase';
 import { effectiveTier } from './billing';
 import { checkoutTarget, openCheckoutWindow } from './checkout';
+import { billingPortalUrl } from './profile';
 import {
   entitlementsFor,
   type Entitlements,
@@ -56,6 +57,8 @@ export interface SubscriptionState {
   /** Why the last checkout attempt failed, or null. */
   checkoutError: string | null;
   dismissCheckoutError: () => void;
+  /** Opens Lemon Squeezy's customer portal: change plan, card, invoices. */
+  openBillingPortal: () => Promise<void>;
 }
 
 /**
@@ -192,6 +195,18 @@ export function useSubscription(user: User | null): SubscriptionState {
     };
   }, [user, load]);
 
+  const openBillingPortal = useCallback(async () => {
+    setCheckoutError(null);
+    try {
+      // Fetched now, not stored: the link is signed and short-lived. Opened in
+      // the same tab rather than a popup, because this one is not a click
+      // handler by the time the request resolves and a blocker would take it.
+      window.location.assign(await billingPortalUrl());
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : 'Could not open the billing portal.');
+    }
+  }, []);
+
   const preview = previewTier();
   // effectiveTier, not profile.tier: a cancelled subscription past its paid
   // period is already free as far as Postgres is concerned, and offering a
@@ -235,5 +250,6 @@ export function useSubscription(user: User | null): SubscriptionState {
     openCheckout,
     checkoutError,
     dismissCheckoutError: () => setCheckoutError(null),
+    openBillingPortal,
   };
 }

@@ -96,7 +96,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } catch {
     return json({ error: 'Malformed request.' }, 400);
   }
-  if (action !== 'cancel' && action !== 'resume') {
+  if (action !== 'cancel' && action !== 'resume' && action !== 'portal') {
     return json({ error: 'Unknown action.' }, 400);
   }
 
@@ -115,6 +115,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const id = profile.lemon_subscription_id;
+
+  // Changing plan belongs to Lemon Squeezy, not to us. It is the merchant of
+  // record: it prorates the switch, charges the difference, applies the
+  // buyer's tax and keeps one subscription rather than two. Hand-rolling it
+  // here would mean mapping every (tier, period) to a numeric variant id in
+  // yet another secret - and a wrong variant id is precisely what stranded two
+  // paid Pro subscriptions with nothing provisioned.
+  //
+  // The portal link is short-lived and signed, so it is fetched when asked for
+  // rather than stored.
+  if (action === 'portal') {
+    try {
+      const body = await lemon(`/subscriptions/${id}`, { method: 'GET' });
+      const url: string | null = body?.data?.attributes?.urls?.customer_portal ?? null;
+      if (!url) throw new Error('Lemon Squeezy returned no customer portal link.');
+      return json({ ok: true, url });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong.';
+      console.error('Could not fetch the customer portal', { userId, message });
+      return json({ error: message }, 502);
+    }
+  }
 
   try {
     const body =

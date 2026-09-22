@@ -143,3 +143,31 @@ async function readFunctionError(error: unknown): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * A fresh link to Lemon Squeezy's customer portal, where a subscriber can
+ * change plan, update their card and read their invoices.
+ *
+ * Changing plan goes here rather than through a second checkout. Buying again
+ * while a subscription is active creates a SECOND subscription: the customer
+ * pays twice, and this app - which records one subscription id per profile -
+ * silently forgets the first, so cancelling from the account page would leave
+ * the other billing with no way to reach it. Lemon Squeezy prorates a switch
+ * and keeps it to one subscription.
+ *
+ * The link is signed and short-lived, so it is fetched at the moment it is
+ * needed rather than stored.
+ */
+export async function billingPortalUrl(): Promise<string> {
+  const { data, error } = await client().functions.invoke<{ url?: string; error?: string }>(
+    'manage-subscription',
+    { body: { action: 'portal' } },
+  );
+
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail ?? 'Could not reach the billing service. Try again in a moment.');
+  }
+  if (!data?.url) throw new Error(data?.error ?? 'No billing portal link was returned.');
+  return data.url;
+}
