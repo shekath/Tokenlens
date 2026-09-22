@@ -1604,3 +1604,284 @@ table.data tbody tr.is-on td:first-child {
   font-size: 13px;
   text-align: right;
 }
+
+/* ============================================== reference pages ========== */
+
+.navlinks {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.navlink {
+  min-height: 32px;
+  padding: 0 10px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.navlink:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.navlink.is-on {
+  background: var(--surface-1);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  font-weight: 550;
+}
+
+.page {
+  padding-top: 24px;
+  max-width: 880px;
+}
+
+/* --- page header ------------------------------------------------------- */
+
+.pagehead {
+  position: relative;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.banner {
+  display: block;
+  width: 100%;
+  height: 132px;
+}
+
+.pagehead--tall .banner {
+  height: 168px;
+}
+
+.pagehead__text {
+  padding: 18px 20px 20px;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+}
+
+.pagehead__eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--series-1);
+}
+
+.pagehead__title {
+  margin: 0;
+  font-size: clamp(22px, 4vw, 30px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.pagehead__lede {
+  margin: 10px 0 0;
+  max-width: 62ch;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* --- docs -------------------------------------------------------------- */
+
+.docnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 20px 0 4px;
+}
+
+.docnav__link {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.docnav__link:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.doc {
+  margin-top: 34px;
+  padding-top: 30px;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: 80px;
+}
+
+.doc__banner {
+  position: relative;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.doc__banner .banner {
+  height: 116px;
+}
+
+.doc__tier {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--series-1);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.doc__tier--team {
+  background: var(--series-2);
+}
+
+.doc__title {
+  margin: 18px 0 4px;
+  font-size: 21px;
+  letter-spacing: -0.015em;
+}
+
+.doc__tagline {
+  margin: 0 0 14px;
+  color: var(--series-1);
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.doc__body {
+  margin: 0 0 12px;
+  max-width: 68ch;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.doc__sub {
+  margin: 22px 0 8px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.doc__steps,
+.doc__when {
+  margin: 0;
+  padding-left: 20px;
+  max-width: 68ch;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.doc__steps li,
+.doc__when li {
+  margin-bottom: 8px;
+}
+
+.doc__steps strong {
+  color: var(--text-primary);
+}
+
+/* A screenshot reads as a window onto the app, not as a picture dropped in. */
+.shot {
+  margin: 18px 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* --- faq --------------------------------------------------------------- */
+
+.faq {
+  margin-top: 32px;
+}
+
+.faq__title {
+  margin: 0 0 4px;
+  font-size: 19px;
+  letter-spacing: -0.015em;
+}
+
+.faq__blurb {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.faq__item {
+  border-top: 1px solid var(--border);
+}
+
+.faq__item:last-child {
+  border-bottom: 1px solid var(--border);
+}
+
+.faq__q {
+  padding: 13px 4px;
+  font-weight: 550;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.faq__q::-webkit-details-marker {
+  display: none;
+}
+
+.faq__q::before {
+  content: '+';
+  color: var(--series-1);
+  font-weight: 700;
+  flex: none;
+}
+
+.faq__item[open] .faq__q::before {
+  content: '–';
+}
+
+.faq__q:hover {
+  color: var(--series-1);
+}
+
+.faq__a {
+  padding: 0 4px 14px 26px;
+  max-width: 68ch;
+}
+
+.faq__a p {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.linkish {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--series-1);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}

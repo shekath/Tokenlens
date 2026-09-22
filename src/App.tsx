@@ -32,6 +32,7 @@ import { useAuth } from './lib/auth';
 import { ProfileMenu } from './components/ProfileMenu';
 import { TabBoundary } from './components/TabBoundary';
 import { retryImport } from './lib/lazyChunk';
+import { useHashRoute } from './lib/useHashRoute';
 import { useSubscription, type Profile } from './lib/subscription';
 import { hasBackend } from './lib/supabase';
 import type { User } from '@supabase/supabase-js';
@@ -64,6 +65,14 @@ const ProposalBuilder = lazy(() =>
   retryImport(() => import('./components/ProposalBuilder'), 'Proposal').then((m) => ({
     default: m.ProposalBuilder,
   })),
+);
+// The reference pages are lazy too: most visits never open them, and the docs
+// page carries its own artwork and screenshots.
+const DocsPage = lazy(() =>
+  retryImport(() => import('./components/DocsPage'), 'Docs').then((m) => ({ default: m.DocsPage })),
+);
+const FaqPage = lazy(() =>
+  retryImport(() => import('./components/FaqPage'), 'FAQ').then((m) => ({ default: m.FaqPage })),
 );
 import { SavedEstimates } from './components/SavedEstimates';
 import { ProGatekeeper } from './components/ProGatekeeper';
@@ -179,6 +188,7 @@ export default function App() {
   const [pricingOpen, setPricingOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
 
+  const [route, goTo] = useHashRoute();
   const auth = useAuth();
   const sub = useSubscription(auth.user);
   const ent = sub.entitlements;
@@ -410,6 +420,20 @@ export default function App() {
               </button>
             ) : null}
 
+            <nav className="navlinks" aria-label="Reference">
+              {(['docs', 'faq'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  className={route === r ? 'navlink is-on' : 'navlink'}
+                  aria-current={route === r ? 'page' : undefined}
+                  onClick={() => goTo(route === r ? 'app' : r)}
+                >
+                  {r === 'docs' ? 'Docs' : 'FAQ'}
+                </button>
+              ))}
+            </nav>
+
             <Account
               user={auth.user}
               profile={sub.profile}
@@ -440,7 +464,26 @@ export default function App() {
         </div>
       </header>
 
-      <main className="shell" style={stale ? { opacity: 0.72 } : undefined}>
+      {route !== 'app' ? (
+        <TabBoundary label={route === 'docs' ? 'Docs' : 'FAQ'}>
+          <Suspense fallback={<div className="shell empty">Loading…</div>}>
+            {route === 'docs' ? (
+              <DocsPage onPricing={openPricing} onBack={() => goTo('app')} />
+            ) : (
+              <FaqPage onBack={() => goTo('app')} />
+            )}
+          </Suspense>
+        </TabBoundary>
+      ) : null}
+
+      {/* Hidden rather than unmounted: the dashboard holds the prompt, the
+          comparison and the tokeniser tables, and rebuilding all of that on
+          the way back from a docs page would be a slow, pointless flash. */}
+      <main
+        className="shell"
+        hidden={route !== 'app'}
+        style={stale ? { opacity: 0.72 } : undefined}
+      >
         {showComposer ? (
           <Composer
             text={text}

@@ -5,10 +5,13 @@
  *   npm run build && npm run preview &
  *   node scripts/visual-check.mjs [outputDir]
  *
+ * Every tab of the dashboard is walked, then the #/docs and #/faq routes.
+ *
  * Fails (exit 1) on a horizontal page scroll at any tested width, on an SVG label
  * that spills outside its own chart, on a floating panel that hangs off either
- * edge of the viewport, and on any console or page error. Writes a full-page
- * screenshot per configuration when an output directory is given.
+ * edge of the viewport, on a documentation screenshot that did not load, and on
+ * any console or page error. Writes a full-page screenshot per configuration
+ * when an output directory is given.
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -110,6 +113,46 @@ for (const cfg of CONFIGS) {
     }
   }
   await page.getByRole('tab', { name: tabs[0], exact: true }).click();
+  await page.waitForTimeout(400);
+
+  // The Docs and FAQ routes are hash routes over the same document, so they
+  // share the topbar and every measurement above applies to them too. Their own
+  // risk is different: full-bleed banners and 1200px screenshots are the widest
+  // things the app renders, and a broken screenshot path degrades to alt text
+  // rather than to an error, so check that the pixels actually arrived.
+  for (const route of ['docs', 'faq']) {
+    await page.evaluate((r) => { window.location.hash = `#/${r}`; }, route);
+    await page.waitForTimeout(700);
+    // Lazy images below the fold never load at the default scroll position.
+    await page.evaluate(() => {
+      for (const img of document.querySelectorAll('.shot img')) img.loading = 'eager';
+    });
+    await page.waitForTimeout(1200);
+    await measure(`#/${route}`);
+
+    const page_ = await page.evaluate(() => ({
+      heading: document.querySelector('.page h1')?.textContent?.trim() ?? '',
+      banners: document.querySelectorAll('svg.banner').length,
+      shots: [...document.querySelectorAll('.shot img')].map((i) => ({
+        src: i.getAttribute('src'),
+        loaded: i.complete && i.naturalWidth > 0,
+      })),
+      // The route page is itself a <main class="shell page">, so the dashboard is
+      // the one that is not it. Two visible <main>s would be the bug here.
+      dashboardHidden:
+        document.querySelector('main.shell:not(.page)')?.hasAttribute('hidden') ?? false,
+    }));
+    if (!page_.heading) problems.push(`${cfg.name} / #/${route}: the page rendered no heading`);
+    if (!page_.banners) problems.push(`${cfg.name} / #/${route}: no banner rendered`);
+    if (!page_.dashboardHidden) {
+      problems.push(`${cfg.name} / #/${route}: the dashboard is still visible behind the page`);
+    }
+    for (const shot of page_.shots.filter((s) => !s.loaded)) {
+      problems.push(`${cfg.name} / #/${route}: screenshot did not load - ${shot.src}`);
+    }
+    if (OUT) await page.screenshot({ path: `${OUT}/${cfg.name}-route-${route}.png`, fullPage: true });
+  }
+  await page.evaluate(() => { window.location.hash = ''; });
   await page.waitForTimeout(400);
 
   const report = await page.evaluate(() => {
