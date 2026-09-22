@@ -20,8 +20,14 @@ Applied and verified against the live project:
 
 The migration records stored in the project carry the same statements with
 abbreviated comments; the files in this directory are the canonical version.
-- Edge Function `lemon-webhook`, deployed with `verify_jwt` disabled (Lemon
+- `migrations/0004_tier_expiry.sql` — a cancelled subscription lapses at
+  `current_period_end` without waiting for a webhook
+- `migrations/0005_subscription_details.sql` — plan name, amount, currency and
+  card, all webhook-owned
+- Edge Function `lemon-webhook`, deployed with `verify_jwt` **disabled** (Lemon
   Squeezy signs with HMAC, not a Supabase JWT, so the function verifies itself)
+- Edge Function `manage-subscription`, deployed with `verify_jwt` **enabled** —
+  it is a user action, not a webhook
 - Supabase's security advisor: 6 findings at first apply, now 2, both
   accounted for (see below). Performance advisor: clean.
 - All test rows removed afterwards; `auth.users`, `profiles`,
