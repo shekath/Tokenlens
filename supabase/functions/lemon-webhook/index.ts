@@ -107,16 +107,31 @@ serve(async (req: Request): Promise<Response> => {
         : await query.eq('lemon_subscription_id', decision.subscriptionId).select('id');
 
     if (error) throw error;
+
+    // An UPDATE matching nothing is not an error to PostgREST, so without this
+    // check it would be acknowledged and forgotten. What a miss MEANS differs
+    // by how the row was addressed, and so does what to do about it.
     if (!data || data.length === 0) {
-      // An UPDATE matching nothing is not an error to PostgREST, so without
-      // this check a payment for an account that does not exist - a mistyped
-      // custom_data, a subscription never recorded - would be acknowledged and
-      // forgotten. 5xx makes Lemon Squeezy retry and puts it in the logs.
-      throw new Error(
-        decision.kind === 'applyToUser'
-          ? `no profile with id ${decision.userId}`
-          : `no profile holds subscription ${decision.subscriptionId}`,
-      );
+      if (decision.kind === 'applyToUser') {
+        // A payment whose custom_data names an account that does not exist.
+        // Money has been taken and nobody upgraded, and a retry genuinely can
+        // fix it once the cause is found, so fail loudly.
+        throw new Error(`no profile with id ${decision.userId}`);
+      }
+
+      // A subscription this deployment does not track: one refused at creation,
+      // one superseded because a profile holds a single subscription id, or one
+      // belonging to another environment sharing the store. Retrying cannot
+      // make it match, and returning 5xx only buys a retry storm - four of
+      // them, for two cancelled duplicates, is how this was found. Acknowledge
+      // it and keep the ledger row, which holds the whole payload if anyone
+      // needs to reconstruct what happened.
+      console.warn('Event for an untracked subscription', {
+        eventId,
+        eventName,
+        subscriptionId: decision.subscriptionId,
+      });
+      return Response.json({ received: true, untrackedSubscription: decision.subscriptionId });
     }
   } catch (err) {
     // Release the claim so the retry can do real work rather than short-circuit
