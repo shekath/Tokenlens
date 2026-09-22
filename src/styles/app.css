@@ -759,19 +759,45 @@ table.data tbody tr.is-on td:first-child {
 
 /* ============================================================== footer === */
 
+/* The footer is a sibling of the pages, not a child of one, so it carries the
+   shell's own width and gutter. The rule above the text belongs to the inner
+   element: on the outer one it would stretch into the gutters and no longer
+   line up with the column it is closing. */
+
 .footer {
-  margin-top: 44px;
+  width: 100%;
+  max-width: 1360px;
+  margin: 44px auto 0;
+  padding: 0 var(--gutter) 48px;
+}
+
+.footer__inner {
   padding-top: 18px;
   border-top: 1px solid var(--border);
   font-size: 12px;
   color: var(--text-muted);
   display: flex;
   flex-wrap: wrap;
+  align-items: baseline;
   gap: 6px 18px;
 }
 
 .footer a {
   color: var(--text-secondary);
+}
+
+.footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+/* The page you are already on stays listed - a footer that reshuffles as you
+   navigate is harder to use than one that does not - but it is not a link. */
+.footer__links [aria-current='page'] {
+  color: var(--text-secondary);
+  text-decoration: none;
+  cursor: default;
 }
 
 /* ============================================================ utilities == */

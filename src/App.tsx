@@ -4,7 +4,6 @@ import {
   DEFAULT_MODEL_ID,
   MODELS,
   MODELS_BY_ID,
-  PRICING_AS_OF,
   VENDORS,
   type Model,
 } from './lib/models';
@@ -32,7 +31,8 @@ import { useAuth } from './lib/auth';
 import { ProfileMenu } from './components/ProfileMenu';
 import { TabBoundary } from './components/TabBoundary';
 import { retryImport } from './lib/lazyChunk';
-import { useHashRoute } from './lib/useHashRoute';
+import { NAV, useHashRoute } from './lib/useHashRoute';
+import { SiteFooter } from './components/SiteFooter';
 import { useSubscription, type Profile } from './lib/subscription';
 import { hasBackend } from './lib/supabase';
 import type { User } from '@supabase/supabase-js';
@@ -420,16 +420,16 @@ export default function App() {
               </button>
             ) : null}
 
-            <nav className="navlinks" aria-label="Reference">
-              {(['docs', 'faq'] as const).map((r) => (
+            <nav className="navlinks" aria-label="Pages">
+              {NAV.map((item) => (
                 <button
-                  key={r}
+                  key={item.route}
                   type="button"
-                  className={route === r ? 'navlink is-on' : 'navlink'}
-                  aria-current={route === r ? 'page' : undefined}
-                  onClick={() => goTo(route === r ? 'app' : r)}
+                  className={route === item.route ? 'navlink is-on' : 'navlink'}
+                  aria-current={route === item.route ? 'page' : undefined}
+                  onClick={() => goTo(item.route)}
                 >
-                  {r === 'docs' ? 'Docs' : 'FAQ'}
+                  {item.label}
                 </button>
               ))}
             </nav>
@@ -645,21 +645,9 @@ export default function App() {
           ) : null}
         </div>
 
-        <footer className="footer">
-          <span>
-            Rates as published on {PRICING_AS_OF}. Verify against the vendor&apos;s pricing page
-            before budgeting.
-          </span>
-          <span>
-            Exact counts: OpenAI (<code>o200k_base</code>, <code>cl100k_base</code>). Every other
-            vendor is estimated — see the badge on each figure.
-          </span>
-          <span>Your prompt stays in this browser. Nothing is uploaded.</span>
-          <button type="button" className="btn btn--ghost" onClick={openPricing}>
-            Plans and pricing
-          </button>
-        </footer>
       </main>
+
+      <SiteFooter route={route} onNavigate={goTo} onPricing={openPricing} />
 
       <AuthDialog
         open={authOpen}

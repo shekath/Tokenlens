@@ -17,6 +17,16 @@ export type Route = 'app' | 'docs' | 'faq';
 
 const ROUTES: Route[] = ['app', 'docs', 'faq'];
 
+/**
+ * The navigation, in order, with the dashboard first because it is the home
+ * page. Shared so the top bar and the footer cannot list different pages.
+ */
+export const NAV: { route: Route; label: string }[] = [
+  { route: 'app', label: 'Dashboard' },
+  { route: 'docs', label: 'Docs' },
+  { route: 'faq', label: 'FAQ' },
+];
+
 export function routeFromHash(hash: string): Route {
   const name = hash.replace(/^#\/?/, '').split(/[?&]/)[0]?.toLowerCase() ?? '';
   return (ROUTES as string[]).includes(name) && name !== 'app' ? (name as Route) : 'app';

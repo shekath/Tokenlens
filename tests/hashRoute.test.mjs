@@ -7,7 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hashFor, routeFromHash } from '../src/lib/useHashRoute.ts';
+import { NAV, hashFor, routeFromHash } from '../src/lib/useHashRoute.ts';
 
 test('the pages are reachable by their own hash', () => {
   assert.equal(routeFromHash('#/docs'), 'docs');
@@ -29,5 +29,19 @@ test('a trailing query on the hash does not break the match', () => {
 test('the hash written back is the one that reads back', () => {
   for (const route of ['app', 'docs', 'faq']) {
     assert.equal(routeFromHash(hashFor(route)), route);
+  }
+});
+
+test('the navigation lists every route, dashboard first', () => {
+  // The top bar and the footer both render NAV, so this is the only place the
+  // order and the labels are decided.
+  assert.deepEqual(
+    NAV.map((item) => item.route),
+    ['app', 'docs', 'faq'],
+    'the dashboard is the home page and comes before the reference pages',
+  );
+  for (const item of NAV) {
+    assert.ok(item.label.trim(), `${item.route} needs a label`);
+    assert.equal(routeFromHash(hashFor(item.route)), item.route);
   }
 });

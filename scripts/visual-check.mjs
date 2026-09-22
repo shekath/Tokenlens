@@ -141,8 +141,19 @@ for (const cfg of CONFIGS) {
       // the one that is not it. Two visible <main>s would be the bug here.
       dashboardHidden:
         document.querySelector('main.shell:not(.page)')?.hasAttribute('hidden') ?? false,
+      footerLinks: [...document.querySelectorAll('.footer__links button')].map((b) =>
+        b.textContent.trim(),
+      ),
     }));
     if (!page_.heading) problems.push(`${cfg.name} / #/${route}: the page rendered no heading`);
+    // The footer used to live inside the dashboard's <main>, so it disappeared
+    // on both reference pages. It is the way back from the bottom of a long
+    // page; if it is missing here, that regressed.
+    for (const link of ['Dashboard', 'Docs', 'FAQ']) {
+      if (!page_.footerLinks.includes(link)) {
+        problems.push(`${cfg.name} / #/${route}: no "${link}" link in the footer`);
+      }
+    }
     if (!page_.banners) problems.push(`${cfg.name} / #/${route}: no banner rendered`);
     if (!page_.dashboardHidden) {
       problems.push(`${cfg.name} / #/${route}: the dashboard is still visible behind the page`);
