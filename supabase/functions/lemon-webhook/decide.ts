@@ -27,6 +27,12 @@ export interface ProfilePatch {
   lemon_customer_id?: string | null;
   lemon_subscription_id?: string | null;
   current_period_end?: string | null;
+  lemon_variant_id?: string | null;
+  lemon_variant_name?: string | null;
+  renewal_amount_cents?: number | null;
+  renewal_currency?: string | null;
+  card_brand?: string | null;
+  card_last_four?: string | null;
 }
 
 export type Decision =
@@ -50,6 +56,13 @@ const SUBSCRIPTION_EVENTS = new Set([
   'subscription_paused',
   'subscription_payment_failed',
 ]);
+
+/**
+ * Invoice events. Their `data.id` is the INVOICE id - the subscription is in
+ * `attributes.subscription_id`, and matching on the wrong one would update
+ * nobody, which the "no row matched" check in index.ts turns into a 500.
+ */
+const INVOICE_EVENTS = new Set(['subscription_payment_success']);
 
 export function parseVariantMap(pro: string | undefined, team: string | undefined): VariantMap {
   const list = (s: string | undefined) =>
@@ -133,6 +146,12 @@ export function decide(payload: Record<string, any>, variants: VariantMap): Deci
       lemon_customer_id: attributes.customer_id ? String(attributes.customer_id) : null,
       lemon_subscription_id: subscriptionId || null,
       current_period_end: periodEnd(attributes),
+      // What the customer sees in their own account, in Lemon Squeezy's words
+      // rather than ours: they bought a named plan, not a tier enum.
+      lemon_variant_id: attributes.variant_id ? String(attributes.variant_id) : null,
+      lemon_variant_name: (attributes.variant_name as string | null) ?? null,
+      card_brand: (attributes.card_brand as string | null) ?? null,
+      card_last_four: (attributes.card_last_four as string | null) ?? null,
     };
 
     if (plan.tier === 'grant') {
@@ -201,6 +220,32 @@ export function decide(payload: Record<string, any>, variants: VariantMap): Deci
       patch: {
         subscription_status: 'cancelled',
         current_period_end: periodEnd(attributes),
+      },
+    };
+  }
+
+  if (INVOICE_EVENTS.has(eventName)) {
+    const onSubscription = String(attributes.subscription_id ?? '');
+    if (!onSubscription) {
+      return { kind: 'reject', status: 400, why: 'invoice carries no subscription_id' };
+    }
+    // A refunded invoice is not what the next renewal will cost.
+    if (attributes.refunded === true) {
+      return { kind: 'ignore', why: 'refunded invoice' };
+    }
+
+    const total = Number(attributes.total);
+    return {
+      kind: 'applyToSubscription',
+      subscriptionId: onSubscription,
+      patch: {
+        // attributes.total is minor units and includes tax. The only honest
+        // answer to "what will I be charged": our own price list is what we
+        // advertise, not what this customer holds.
+        renewal_amount_cents: Number.isFinite(total) && total >= 0 ? Math.round(total) : null,
+        renewal_currency: (attributes.currency as string | null) ?? null,
+        card_brand: (attributes.card_brand as string | null) ?? null,
+        card_last_four: (attributes.card_last_four as string | null) ?? null,
       },
     };
   }

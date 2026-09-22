@@ -223,6 +223,42 @@ A Team purchase showing `tier = 'pro'` means the variant lists are the wrong
 way round. Nothing at all means the webhook never arrived — Lemon Squeezy's
 delivery log has the response, and 401 means the signing secret does not match.
 
+### Managing a subscription
+
+`supabase/functions/manage-subscription` cancels or resumes the caller's own
+subscription at Lemon Squeezy, and writes the result back so the account page
+is right immediately rather than after a round trip through the webhook queue.
+
+**It deploys with JWT verification ON**, unlike the webhook:
+
+```bash
+supabase functions deploy manage-subscription          # verify_jwt defaults on
+supabase functions deploy lemon-webhook --no-verify-jwt
+```
+
+Getting that backwards in either direction is the mistake to avoid: the webhook
+carries an HMAC signature and no JWT, and this one is a user action that should
+not be reachable without a session.
+
+It needs one more secret:
+
+```
+LEMON_SQUEEZY_API_KEY = <Settings → API in Lemon Squeezy>
+```
+
+The rule the function is built around: **the subscription id never comes from
+the request.** It is read from the caller's own profile row, found by the user
+id inside their verified token. A body that could name a subscription would let
+anyone with an account cancel anyone else's, and checking afterwards is never as
+reliable as not accepting it.
+
+Lemon Squeezy is called first and the profile is updated from its answer, so a
+failure there leaves the row untouched rather than telling someone they have
+cancelled something they have not. The webhook arrives moments later and writes
+the same thing; it is idempotent, so both landing is harmless.
+
+Cancelling does not remove access — see the table below.
+
 ### What each event does
 
 | Event | Effect |
@@ -232,6 +268,15 @@ delivery log has the response, and 401 means the signing secret does not match.
 | `subscription_expired` | drops to free |
 | `subscription_paused` | drops to free |
 | `subscription_payment_failed` | marks past due; the tier is left alone while the card is retried |
+| `subscription_payment_success` | records what was actually charged — `attributes.total`, minor units, tax included — plus the currency and the card's last four |
+
+That last one is where the amount on the account page comes from. Not from
+`PLANS` in `src/lib/entitlements.ts`: that is what we advertise, and Lemon
+Squeezy is the merchant of record, so it applies the buyer's local tax, any
+discount code, and the price that was in force when they subscribed. Quoting
+our list price at someone whose bill differs would be a small lie told
+confidently. Note its `data.id` is the **invoice** id — the subscription is in
+`attributes.subscription_id`, and matching on the wrong one updates nobody.
 
 Cancelling does not remove access, because Lemon Squeezy's `cancelled` means
 "will not renew" and the customer has paid to `ends_at`. The tier drops at

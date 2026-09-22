@@ -487,6 +487,61 @@ exception
 end $$;
 
 \echo ''
+\echo '== the billing columns are the webhook's to write, not the user's =='
+select test_reset();
+select test_as_service();
+
+update public.profiles
+   set renewal_amount_cents = 1200, renewal_currency = 'USD',
+       card_brand = 'visa', card_last_four = '4242',
+       lemon_variant_id = '2152668', lemon_variant_name = 'Pro Monthly'
+ where id = '44444444-4444-4444-4444-444444444444';
+
+select test_as_user('44444444-4444-4444-4444-444444444444');
+
+update public.profiles
+   set renewal_amount_cents = 1, renewal_currency = 'XXX',
+       card_brand = 'mine', card_last_four = '0000',
+       lemon_variant_name = 'Free forever',
+       display_name = 'Dana'
+ where id = '44444444-4444-4444-4444-444444444444';
+
+select assert(
+  (select renewal_amount_cents from public.profiles where id = '44444444-4444-4444-4444-444444444444') = 1200,
+  'a user cannot rewrite what they are charged'
+);
+select assert(
+  (select card_last_four || ' ' || lemon_variant_name from public.profiles
+    where id = '44444444-4444-4444-4444-444444444444') = '4242 Pro Monthly',
+  'nor the card on file or the plan name'
+);
+select assert(
+  (select display_name from public.profiles where id = '44444444-4444-4444-4444-444444444444') = 'Dana',
+  'while the editable columns in the same statement still go through'
+);
+
+select test_as_service();
+do $$
+begin
+  begin
+    update public.profiles set renewal_currency = 'usd'
+     where id = '44444444-4444-4444-4444-444444444444';
+    raise exception 'FAILED: a lowercase currency was accepted';
+  exception when check_violation then
+    raise notice '  ok: the currency is ISO 4217, uppercase';
+  end;
+
+  begin
+    update public.profiles set card_last_four = '4242424242'
+     where id = '44444444-4444-4444-4444-444444444444';
+    raise exception 'FAILED: a full card number shape was accepted';
+  exception when check_violation then
+    raise notice '  ok: only four digits can be stored for the card';
+  end;
+end;
+$$;
+
+\echo ''
 \echo '== an empty claims string does not break profile updates =='
 -- current_setting(..., true) returns '' rather than NULL when the GUC is set
 -- empty. The first version of the guard only tested for NULL, reached

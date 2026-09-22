@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { User } from '@supabase/supabase-js';
 import { Dialog } from './Dialog';
 import { countryOptions } from '../lib/countries';
-import { hasPassword, saveProfile, setPassword } from '../lib/profile';
+import { changeSubscription, hasPassword, saveProfile, setPassword } from '../lib/profile';
 import {
   countryProblem,
   displayNameProblem,
@@ -13,11 +13,18 @@ import {
 } from '../lib/profileFields';
 import { passwordProblem } from '../lib/auth';
 import { panelOffsetLeft } from '../lib/menuPlacement';
-import { billingNotice, formatBillingDate } from '../lib/billing';
+import {
+  billingNotice,
+  formatAmount,
+  formatBillingDate,
+  formatCard,
+  statusLabel,
+  titleCase,
+} from '../lib/billing';
 import type { Profile } from '../lib/subscription';
 import type { Tier } from '../lib/entitlements';
 
-type Section = 'details' | 'password';
+type Section = 'details' | 'password' | 'subscription';
 
 /**
  * Where the dropdown goes. The arithmetic, and why the old rule was wrong, is
@@ -179,6 +186,16 @@ export function ProfileMenu({
           <button type="button" role="menuitem" className="pmenu__item" onClick={() => openSection('details')}>
             Profile details
           </button>
+          {profile?.hasSubscription ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="pmenu__item"
+              onClick={() => openSection('subscription')}
+            >
+              Subscription
+            </button>
+          ) : null}
           <button type="button" role="menuitem" className="pmenu__item" onClick={() => openSection('password')}>
             {hasPassword(user) ? 'Change password' : 'Create a password'}
           </button>
@@ -308,10 +325,20 @@ function ProfileDialog({
     if (section) setTab(section);
   }, [section]);
 
+  // No Subscription tab on an account that has never had one: an empty panel
+  // explaining that there is nothing to manage is worse than no tab.
+  const sections: Section[] = profile?.hasSubscription
+    ? ['details', 'password', 'subscription']
+    : ['details', 'password'];
+
+  useEffect(() => {
+    if (!sections.includes(tab)) setTab('details');
+  }, [sections, tab]);
+
   return (
     <Dialog open={section !== null} onClose={onClose} title="Your account">
       <div className="segmented" role="tablist" aria-label="Account settings">
-        {(['details', 'password'] as const).map((t) => (
+        {sections.map((t) => (
           <button
             key={t}
             type="button"
@@ -320,17 +347,143 @@ function ProfileDialog({
             className={tab === t ? 'segmented__btn is-on' : 'segmented__btn'}
             onClick={() => setTab(t)}
           >
-            {t === 'details' ? 'Details' : 'Password'}
+            {t === 'details' ? 'Details' : t === 'password' ? 'Password' : 'Subscription'}
           </button>
         ))}
       </div>
 
       {tab === 'details' ? (
         <DetailsForm profile={profile} email={email} userId={user.id} onSaved={onSaved} />
-      ) : (
+      ) : tab === 'password' ? (
         <PasswordForm user={user} />
+      ) : (
+        <SubscriptionPanel profile={profile} onChanged={onSaved} />
       )}
     </Dialog>
+  );
+}
+
+/**
+ * What the subscription is, and the one thing a subscriber may want to do to it.
+ *
+ * The amount comes from the last invoice Lemon Squeezy issued, not from our own
+ * price list: it is the merchant of record, so it applies the buyer's local tax
+ * and whatever price or discount they actually hold. Quoting our list price at
+ * someone whose bill differs would be a small lie told confidently.
+ */
+function SubscriptionPanel({
+  profile,
+  onChanged,
+}: {
+  profile: Profile | null;
+  onChanged: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  if (!profile) return <p className="notice">Loading your subscription…</p>;
+
+  const cancelled = profile.status === 'cancelled';
+  const end = profile.currentPeriodEnd ? new Date(profile.currentPeriodEnd) : null;
+  const dated = end && Number.isFinite(end.getTime()) ? end : null;
+  const amount = formatAmount(profile.amountCents, profile.currency);
+  const card = formatCard(profile.cardBrand, profile.cardLastFour);
+
+  const run = async (action: 'cancel' | 'resume') => {
+    setError(null);
+    setDone(null);
+    setBusy(true);
+    try {
+      const result = await changeSubscription(action);
+      const when = result.currentPeriodEnd ? new Date(result.currentPeriodEnd) : null;
+      setDone(
+        action === 'cancel'
+          ? `Cancelled. You keep ${titleCase(profile.tier)} until ${when ? formatBillingDate(when) : 'the end of the period'}.`
+          : 'Your subscription will renew as normal again.',
+      );
+      setConfirming(false);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change your subscription.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="stack" style={{ marginTop: 16 }}>
+      <dl className="factlist">
+        <div>
+          <dt>Plan</dt>
+          <dd>{profile.planName ?? titleCase(profile.tier)}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{statusLabel(profile.status)}</dd>
+        </div>
+        <div>
+          <dt>{cancelled ? 'Access until' : 'Next renewal'}</dt>
+          <dd>{dated ? formatBillingDate(dated) : 'Not scheduled'}</dd>
+        </div>
+        <div>
+          <dt>Amount</dt>
+          <dd>{amount ?? 'Not charged yet'}</dd>
+        </div>
+        {card ? (
+          <div>
+            <dt>Card</dt>
+            <dd>{card}</dd>
+          </div>
+        ) : null}
+      </dl>
+
+      {amount ? (
+        <p className="muted" style={{ fontSize: 11, margin: 0 }}>
+          The amount is what Lemon Squeezy last charged, tax included. It is the merchant
+          of record and issues the receipts.
+        </p>
+      ) : null}
+
+      {error ? <p className="notice notice--error">{error}</p> : null}
+      {done ? <p className="notice notice--ok">{done}</p> : null}
+
+      {cancelled ? (
+        <>
+          <p className="notice notice--warn" style={{ margin: 0 }}>
+            This subscription will not renew.{' '}
+            {dated
+              ? `Your ${titleCase(profile.tier)} features stay until ${formatBillingDate(dated)}.`
+              : ''}
+          </p>
+          <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void run('resume')}>
+            {busy ? 'Working…' : 'Resume subscription'}
+          </button>
+        </>
+      ) : confirming ? (
+        <>
+          <p className="notice notice--warn" style={{ margin: 0 }}>
+            <strong>Cancel this subscription?</strong> It stops renewing, and you keep every{' '}
+            {titleCase(profile.tier)} feature until{' '}
+            {dated ? formatBillingDate(dated) : 'the end of the period'}.
+            You can resume any time before then.
+          </p>
+          <div className="row">
+            <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void run('cancel')}>
+              {busy ? 'Cancelling…' : 'Yes, cancel'}
+            </button>
+            <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => setConfirming(false)}>
+              Keep it
+            </button>
+          </div>
+        </>
+      ) : (
+        <button type="button" className="btn btn--ghost" onClick={() => setConfirming(true)}>
+          Cancel subscription
+        </button>
+      )}
+    </div>
   );
 }
 

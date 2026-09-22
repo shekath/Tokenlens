@@ -1569,3 +1569,38 @@ table.data tbody tr.is-on td:first-child {
   background: var(--warning);
   vertical-align: middle;
 }
+
+/* Label/value pairs in the account dialog. Two columns where there is room,
+   stacked where there is not, so a long plan name never squeezes its label. */
+.factlist {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.factlist > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: var(--surface-1);
+}
+
+.factlist dt {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.factlist dd {
+  margin: 0;
+  font-size: 13px;
+  text-align: right;
+}

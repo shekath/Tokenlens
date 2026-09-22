@@ -162,6 +162,74 @@ test('anything else is acknowledged and ignored', () => {
   }
 });
 
+// ---------------------------------------------------------------- invoices --
+
+/** A subscription-invoice body. Note data.id is the INVOICE, not the sub. */
+const invoice = (over = {}) => ({
+  meta: { event_name: 'subscription_payment_success' },
+  data: {
+    type: 'subscription-invoices',
+    id: '55551111',
+    attributes: {
+      subscription_id: 987654,
+      currency: 'USD',
+      status: 'paid',
+      refunded: false,
+      subtotal: 1200,
+      tax: 240,
+      total: 1440,
+      total_formatted: '$14.40',
+      card_brand: 'visa',
+      card_last_four: '4242',
+      ...over,
+    },
+  },
+});
+
+test('a paid invoice records what was actually charged', () => {
+  const d = decide(invoice(), VARIANTS);
+  assert.equal(d.kind, 'applyToSubscription');
+  // The subscription, not the invoice id: matching on data.id would update
+  // nobody, and "no row matched" is a 500.
+  assert.equal(d.subscriptionId, '987654');
+  // Tax included, because that is what leaves the customer's account.
+  assert.equal(d.patch.renewal_amount_cents, 1440);
+  assert.equal(d.patch.renewal_currency, 'USD');
+  assert.equal(d.patch.card_last_four, '4242');
+  assert.ok(!('tier' in d.patch), 'an invoice must not move anyone between tiers');
+});
+
+test('a refunded invoice is not what the next renewal will cost', () => {
+  assert.equal(decide(invoice({ refunded: true }), VARIANTS).kind, 'ignore');
+});
+
+test('an invoice with no subscription is refused rather than applied to nobody', () => {
+  const d = decide(invoice({ subscription_id: null }), VARIANTS);
+  assert.equal(d.kind, 'reject');
+  assert.equal(d.status, 400);
+});
+
+test('a nonsense total is stored as nothing rather than a wrong number', () => {
+  assert.equal(decide(invoice({ total: 'free' }), VARIANTS).patch.renewal_amount_cents, null);
+  assert.equal(decide(invoice({ total: -5 }), VARIANTS).patch.renewal_amount_cents, null);
+});
+
+test('a purchase records the plan name and card for the account page', () => {
+  const d = decide(
+    event('subscription_created', {
+      ...active('113'),
+      variant_name: 'Team Monthly',
+      card_brand: 'mastercard',
+      card_last_four: '1881',
+    }),
+    VARIANTS,
+  );
+  assert.equal(d.patch.lemon_variant_id, '113');
+  assert.equal(d.patch.lemon_variant_name, 'Team Monthly');
+  assert.equal(d.patch.card_brand, 'mastercard');
+  assert.equal(d.patch.card_last_four, '1881');
+});
+
 test('the variant map is parsed forgivingly but matched exactly', () => {
   const v = parseVariantMap(' 111 , 112 ,', '113,');
   assert.deepEqual(v, { pro: ['111', '112'], team: ['113'] });

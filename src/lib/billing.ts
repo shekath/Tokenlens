@@ -90,3 +90,40 @@ export function billingNotice(facts: BillingFacts | null, now: number = Date.now
 export function formatBillingDate(date: Date): string {
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
+
+/**
+ * A charged amount, in the currency it was charged in.
+ *
+ * Lemon Squeezy reports minor units. Dividing by 100 is right for the
+ * currencies this store sells in, and wrong for the zero-decimal ones (JPY,
+ * KRW) and the three-decimal ones (BHD, KWD) - so the divisor comes from Intl
+ * rather than from an assumption, and a currency nobody expected still prints
+ * a correct figure.
+ */
+export function formatAmount(cents: number | null, currency: string | null): string | null {
+  if (cents === null || !Number.isFinite(cents) || !currency) return null;
+  try {
+    const format = new Intl.NumberFormat(undefined, { style: 'currency', currency });
+    const digits = format.resolvedOptions().maximumFractionDigits ?? 2;
+    return format.format(cents / 10 ** digits);
+  } catch {
+    // An unknown currency code: better a bare number with the code than nothing.
+    return `${(cents / 100).toFixed(2)} ${currency}`;
+  }
+}
+
+/** "visa ending 4242", or null when no card is on file. */
+export function formatCard(brand: string | null, lastFour: string | null): string | null {
+  if (!lastFour) return null;
+  return brand ? `${brand} ending ${lastFour}` : `card ending ${lastFour}`;
+}
+
+/** Enum values are lower case in the database; a person reading them is not. */
+export function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+/** "Past due", not "past_due". */
+export function statusLabel(status: string): string {
+  return titleCase(status.replace(/_/g, ' '));
+}

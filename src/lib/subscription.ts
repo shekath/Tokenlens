@@ -25,6 +25,15 @@ export interface Profile {
   tier: Tier;
   status: SubscriptionStatus;
   currentPeriodEnd: string | null;
+  /** Lemon Squeezy's own name for the plan, e.g. "Pro Monthly". */
+  planName: string | null;
+  /** What was last actually invoiced, in minor units, tax included. */
+  amountCents: number | null;
+  currency: string | null;
+  cardBrand: string | null;
+  cardLastFour: string | null;
+  /** True when there is a subscription to manage at all. */
+  hasSubscription: boolean;
 }
 
 export interface SubscriptionState {
@@ -94,9 +103,10 @@ export function useSubscription(user: User | null): SubscriptionState {
     setError(null);
     const { data, error: err } = await supabase
       .from('profiles')
-      .select(
-        'id, public_id, email, full_name, display_name, phone, country, tier, subscription_status, current_period_end',
-      )
+      // One literal, deliberately: supabase-js infers the returned row shape
+      // from the literal type of this argument, and splitting it across a
+      // concatenation widens that to `string` and collapses every field.
+      .select('id, public_id, email, full_name, display_name, phone, country, tier, subscription_status, current_period_end, lemon_subscription_id, lemon_variant_name, renewal_amount_cents, renewal_currency, card_brand, card_last_four')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -115,6 +125,12 @@ export function useSubscription(user: User | null): SubscriptionState {
         tier: data.tier,
         status: data.subscription_status,
         currentPeriodEnd: data.current_period_end,
+        planName: data.lemon_variant_name,
+        amountCents: data.renewal_amount_cents,
+        currency: data.renewal_currency,
+        cardBrand: data.card_brand,
+        cardLastFour: data.card_last_four,
+        hasSubscription: Boolean(data.lemon_subscription_id),
       });
     } else {
       // The row is created by an auth trigger; a brief gap right after sign-up is

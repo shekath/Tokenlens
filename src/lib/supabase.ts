@@ -32,6 +32,12 @@ type ProfileRow = {
   lemon_customer_id: string | null;
   lemon_subscription_id: string | null;
   current_period_end: string | null;
+  lemon_variant_id: string | null;
+  lemon_variant_name: string | null;
+  renewal_amount_cents: number | null;
+  renewal_currency: string | null;
+  card_brand: string | null;
+  card_last_four: string | null;
   created_at: string;
   updated_at: string;
 };

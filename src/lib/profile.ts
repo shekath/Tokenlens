@@ -81,3 +81,46 @@ export async function setPassword(
   const { error } = await c.auth.updateUser({ password: nextPassword });
   if (error) throw error;
 }
+
+export interface SubscriptionChange {
+  status: string;
+  currentPeriodEnd: string | null;
+  tier: string | null;
+}
+
+/**
+ * Cancels or resumes the caller's subscription, at Lemon Squeezy.
+ *
+ * Deliberately sends no subscription id. The Edge Function reads it from the
+ * caller's own profile using the user id inside their verified token, so there
+ * is nothing here that could name somebody else's subscription.
+ *
+ * Cancelling does not end access: Lemon Squeezy's "cancelled" means it will not
+ * renew, and the paid period runs to current_period_end.
+ */
+export async function changeSubscription(action: 'cancel' | 'resume'): Promise<SubscriptionChange> {
+  const { data, error } = await client().functions.invoke<
+    SubscriptionChange & { error?: string }
+  >('manage-subscription', { body: { action } });
+
+  if (error) {
+    // functions.invoke reports a non-2xx as a FunctionsHttpError whose message
+    // is just the status. The function's own explanation is in the body, and
+    // that is the part worth showing someone.
+    const detail = await readFunctionError(error);
+    throw new Error(detail ?? 'Could not reach the billing service. Try again in a moment.');
+  }
+  if (!data || data.error) throw new Error(data?.error ?? 'The billing service returned nothing.');
+  return data;
+}
+
+async function readFunctionError(error: unknown): Promise<string | null> {
+  const response = (error as { context?: Response })?.context;
+  if (!response || typeof response.json !== 'function') return null;
+  try {
+    const body = await response.json();
+    return typeof body?.error === 'string' ? body.error : null;
+  } catch {
+    return null;
+  }
+}

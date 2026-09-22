@@ -108,3 +108,49 @@ test('the date is unambiguous in any locale', () => {
   assert.match(text, /Oct/i);
   assert.match(text, /2026/);
 });
+
+// ------------------------------------------------------------------ money --
+
+test('an amount prints in the currency it was charged in', async () => {
+  const { formatAmount } = await import('../src/lib/billing.ts');
+  // 1440 minor units of USD is $14.40, not $1440.
+  assert.match(formatAmount(1440, 'USD'), /14\.40/);
+  assert.match(formatAmount(9900, 'EUR'), /99/);
+});
+
+test('zero-decimal currencies are not divided by a hundred', async () => {
+  const { formatAmount } = await import('../src/lib/billing.ts');
+  // JPY has no minor unit: 1200 yen is ¥1,200, and ¥12 would be a 100x lie
+  // about what someone is paying.
+  const yen = formatAmount(1200, 'JPY');
+  assert.match(yen, /1,?200/);
+  assert.doesNotMatch(yen, /12\.00/);
+});
+
+test('an unknown currency still shows a number rather than nothing', async () => {
+  const { formatAmount } = await import('../src/lib/billing.ts');
+  const out = formatAmount(1200, 'ZZZ');
+  assert.ok(out && /12/.test(out) && out.includes('ZZZ'), out);
+});
+
+test('a missing amount or currency is absent, not zero', async () => {
+  const { formatAmount } = await import('../src/lib/billing.ts');
+  assert.equal(formatAmount(null, 'USD'), null);
+  assert.equal(formatAmount(1200, null), null);
+  assert.equal(formatAmount(Number.NaN, 'USD'), null);
+});
+
+test('the card reads as a person would say it', async () => {
+  const { formatCard } = await import('../src/lib/billing.ts');
+  assert.equal(formatCard('visa', '4242'), 'visa ending 4242');
+  assert.equal(formatCard(null, '4242'), 'card ending 4242');
+  assert.equal(formatCard('visa', null), null);
+});
+
+test('enum values are shown the way a person writes them', async () => {
+  const { statusLabel, titleCase } = await import('../src/lib/billing.ts');
+  assert.equal(statusLabel('past_due'), 'Past due');
+  assert.equal(statusLabel('active'), 'Active');
+  assert.equal(titleCase('pro'), 'Pro');
+  assert.equal(titleCase(''), '');
+});
