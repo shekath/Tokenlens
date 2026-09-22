@@ -69,6 +69,36 @@ const SUBSCRIPTION_EVENTS = new Set([
  */
 const INVOICE_EVENTS = new Set(['subscription_payment_success']);
 
+/**
+ * Lemon Squeezy sends "" rather than null for fields it has nothing to put in -
+ * a subscription paid by PayPal has no card, one still in trial has no invoice
+ * currency. The database is stricter than that: profiles constrains
+ * card_last_four to exactly four digits and renewal_currency to three
+ * uppercase letters (migration 0005), and because the subscriptions row syncs
+ * into profiles by trigger, a value those checks reject does not get quietly
+ * dropped - it aborts the whole webhook transaction. That is a 500, and a 500
+ * is a retry, forever, for an event that will never succeed.
+ *
+ * So normalise at the boundary: anything that is not the shape the column
+ * accepts becomes null, which every one of these columns allows.
+ */
+function digits4(value: unknown): string | null {
+  const s = typeof value === 'string' ? value.trim() : '';
+  return /^[0-9]{4}$/.test(s) ? s : null;
+}
+
+function currencyCode(value: unknown): string | null {
+  // Lemon Squeezy documents ISO 4217 uppercase, but the column is the contract
+  // and upper-casing a code that is already uppercase costs nothing.
+  const s = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  return /^[A-Z]{3}$/.test(s) ? s : null;
+}
+
+function nonEmpty(value: unknown): string | null {
+  const s = typeof value === 'string' ? value.trim() : '';
+  return s === '' ? null : s;
+}
+
 export function parseVariantMap(pro: string | undefined, team: string | undefined): VariantMap {
   const list = (s: string | undefined) =>
     (s ?? '')
@@ -157,9 +187,9 @@ export function decide(payload: Record<string, any>, variants: VariantMap): Deci
       // What the customer sees in their own account, in Lemon Squeezy's words
       // rather than ours: they bought a named plan, not a tier enum.
       lemon_variant_id: attributes.variant_id ? String(attributes.variant_id) : null,
-      lemon_variant_name: (attributes.variant_name as string | null) ?? null,
-      card_brand: (attributes.card_brand as string | null) ?? null,
-      card_last_four: (attributes.card_last_four as string | null) ?? null,
+      lemon_variant_name: nonEmpty(attributes.variant_name),
+      card_brand: nonEmpty(attributes.card_brand),
+      card_last_four: digits4(attributes.card_last_four),
     };
 
     if (plan.tier === 'grant') {
@@ -241,9 +271,9 @@ export function decide(payload: Record<string, any>, variants: VariantMap): Deci
         // answer to "what will I be charged": our own price list is what we
         // advertise, not what this customer holds.
         renewal_amount_cents: Number.isFinite(total) && total >= 0 ? Math.round(total) : null,
-        renewal_currency: (attributes.currency as string | null) ?? null,
-        card_brand: (attributes.card_brand as string | null) ?? null,
-        card_last_four: (attributes.card_last_four as string | null) ?? null,
+        renewal_currency: currencyCode(attributes.currency),
+        card_brand: nonEmpty(attributes.card_brand),
+        card_last_four: digits4(attributes.card_last_four),
       },
     };
   }

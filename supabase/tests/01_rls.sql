@@ -767,4 +767,52 @@ select assert(
 );
 
 \echo ''
+\echo '== subscriptions cannot hold what profiles would refuse =='
+
+-- subscriptions syncs into profiles by trigger, so a value profiles rejects
+-- does not get dropped on the way - it aborts the transaction that wrote it.
+-- For the webhook that means a 500, and a 500 means Lemon Squeezy retries an
+-- event that can never succeed. The two tables have to agree.
+select assert(
+  (select count(*) from pg_constraint
+    where conrelid = 'public.subscriptions'::regclass
+      and conname in (
+        'subscriptions_renewal_currency_shape',
+        'subscriptions_card_last_four_shape'
+      )) = 2,
+  'subscriptions constrains the currency and card columns as profiles does'
+);
+
+-- And the constraints actually bite, rather than being checks that accept
+-- anything. "" is the real case: Lemon Squeezy sends it for a subscription
+-- with no card on file.
+do $$
+declare
+  refused boolean := false;
+begin
+  begin
+    insert into public.subscriptions (lemon_subscription_id, user_id, card_last_four)
+    values ('shape-probe', '11111111-1111-1111-1111-111111111111', '');
+  exception
+    when check_violation then refused := true;
+  end;
+  perform assert(refused, 'an empty card_last_four is refused, not stored');
+end $$;
+
+do $$
+declare
+  refused boolean := false;
+begin
+  begin
+    insert into public.subscriptions (lemon_subscription_id, user_id, renewal_currency)
+    values ('shape-probe-2', '11111111-1111-1111-1111-111111111111', 'usd');
+  exception
+    when check_violation then refused := true;
+  end;
+  perform assert(refused, 'a lowercase currency is refused, not stored');
+end $$;
+
+delete from public.subscriptions where lemon_subscription_id like 'shape-probe%';
+
+\echo ''
 \echo 'All RLS assertions passed.'

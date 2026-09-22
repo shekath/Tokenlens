@@ -240,6 +240,52 @@ test('an invoice with no subscription is refused rather than applied to nobody',
   assert.equal(d.status, 400);
 });
 
+test('a card the database would refuse is stored as no card, not as a 500', () => {
+  // Lemon Squeezy sends "" for a subscription with no card on file - PayPal,
+  // or a trial that has not taken a payment yet. profiles.card_last_four is
+  // constrained to exactly four digits, and the subscriptions -> profiles sync
+  // trigger means a value it rejects aborts the whole webhook transaction:
+  // a 500, and a permanent retry for an event that can never succeed.
+  for (const bad of ['', '   ', '42', '4242 extra', null, undefined, 4242]) {
+    assert.equal(
+      decide(invoice({ card_last_four: bad }), VARIANTS).patch.card_last_four,
+      null,
+      `card_last_four ${JSON.stringify(bad)} must not reach the database`,
+    );
+  }
+  assert.equal(decide(invoice({ card_last_four: ' 4242 ' }), VARIANTS).patch.card_last_four, '4242');
+  assert.equal(decide(invoice({ card_brand: '' }), VARIANTS).patch.card_brand, null);
+});
+
+test('the currency is normalised to what the column accepts', () => {
+  // profiles.renewal_currency is checked against ^[A-Z]{3}$.
+  assert.equal(decide(invoice({ currency: 'usd' }), VARIANTS).patch.renewal_currency, 'USD');
+  assert.equal(decide(invoice({ currency: ' eur ' }), VARIANTS).patch.renewal_currency, 'EUR');
+  for (const bad of ['', 'US', 'DOLLAR', null, 840]) {
+    assert.equal(
+      decide(invoice({ currency: bad }), VARIANTS).patch.renewal_currency,
+      null,
+      `currency ${JSON.stringify(bad)} must not reach the database`,
+    );
+  }
+});
+
+test('the same normalising applies to a purchase, not just an invoice', () => {
+  const d = decide(
+    event('subscription_created', {
+      variant_id: 111,
+      status: 'active',
+      card_brand: '',
+      card_last_four: '',
+      variant_name: '',
+    }),
+    VARIANTS,
+  );
+  assert.equal(d.patch.card_brand, null);
+  assert.equal(d.patch.card_last_four, null);
+  assert.equal(d.patch.lemon_variant_name, null);
+});
+
 test('a nonsense total is stored as nothing rather than a wrong number', () => {
   assert.equal(decide(invoice({ total: 'free' }), VARIANTS).patch.renewal_amount_cents, null);
   assert.equal(decide(invoice({ total: -5 }), VARIANTS).patch.renewal_amount_cents, null);
