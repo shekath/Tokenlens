@@ -10,8 +10,9 @@ export function PricingDialog({
   signedIn,
   hasSubscription,
   error,
+  switching,
   onCheckout,
-  onManage,
+  onSwitch,
   onNeedAccount,
 }: {
   open: boolean;
@@ -23,7 +24,8 @@ export function PricingDialog({
   /** Why the last checkout attempt did not open, or null. */
   error: string | null;
   onCheckout: (plan: Plan, period: 'monthly' | 'annual') => void;
-  onManage: () => void;
+  onSwitch: (plan: Plan, period: 'monthly' | 'annual') => void;
+  switching: boolean;
   onNeedAccount: () => void;
 }) {
   const [period, setPeriod] = useState<'monthly' | 'annual'>('monthly');
@@ -108,9 +110,15 @@ export function PricingDialog({
                 // is active creates a SECOND subscription - the customer pays
                 // twice, and this app records one subscription id per profile,
                 // so the first is silently forgotten and keeps billing with no
-                // way to reach it from here. Lemon Squeezy prorates a switch.
-                <button type="button" className="btn btn--primary" onClick={onManage}>
-                  Switch to {plan.name}
+                // way to reach it from here. This moves the existing one, and
+                // Lemon Squeezy prorates the difference.
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  disabled={switching}
+                  onClick={() => onSwitch(plan, annualUnavailable ? 'monthly' : period)}
+                >
+                  {switching ? 'Working…' : `Switch to ${plan.name}`}
                 </button>
               ) : (
                 <button

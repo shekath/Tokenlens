@@ -20,6 +20,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { chooseVariant, type Period, type VariantChoice } from './plans.ts';
 
 const API = 'https://api.lemonsqueezy.com/v1';
 
@@ -91,12 +92,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!userId) return json({ error: 'Not signed in.' }, 401);
 
   let action: string;
+  let wantTier = '';
+  let wantPeriod: Period = 'monthly';
   try {
-    action = String(((await req.json()) as { action?: unknown })?.action ?? '');
+    const body = (await req.json()) as { action?: unknown; tier?: unknown; period?: unknown };
+    action = String(body?.action ?? '');
+    // A tier, never a variant id. The variant is resolved from the same
+    // secrets the webhook trusts, so a caller cannot name an arbitrary price.
+    wantTier = String(body?.tier ?? '');
+    wantPeriod = body?.period === 'annual' ? 'annual' : 'monthly';
   } catch {
     return json({ error: 'Malformed request.' }, 400);
   }
-  if (action !== 'cancel' && action !== 'resume' && action !== 'portal') {
+  if (!['cancel', 'resume', 'portal', 'switch'].includes(action)) {
     return json({ error: 'Unknown action.' }, 400);
   }
 
@@ -116,15 +124,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const id = profile.lemon_subscription_id;
 
-  // Changing plan belongs to Lemon Squeezy, not to us. It is the merchant of
-  // record: it prorates the switch, charges the difference, applies the
-  // buyer's tax and keeps one subscription rather than two. Hand-rolling it
-  // here would mean mapping every (tier, period) to a numeric variant id in
-  // yet another secret - and a wrong variant id is precisely what stranded two
-  // paid Pro subscriptions with nothing provisioned.
+  // Lemon Squeezy's own portal: the card on file, the invoices, and plan
+  // changes too. It was the whole answer here until it turned out to require
+  // an activated store - before activation it answers "This store has not been
+  // activated", which is a dead end for anyone still in test mode. So plan
+  // changes moved to the API above, which works either way, and this stays for
+  // the things only the merchant of record can show.
   //
-  // The portal link is short-lived and signed, so it is fetched when asked for
-  // rather than stored.
+  // The link is short-lived and signed, so it is fetched when asked for rather
+  // than stored.
   if (action === 'portal') {
     try {
       const body = await lemon(`/subscriptions/${id}`, { method: 'GET' });
@@ -134,6 +142,96 @@ Deno.serve(async (req: Request): Promise<Response> => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong.';
       console.error('Could not fetch the customer portal', { userId, message });
+      return json({ error: message }, 502);
+    }
+  }
+
+  /**
+   * Move the existing subscription to another plan.
+   *
+   * This rather than a second checkout: buying again while a subscription is
+   * active creates a SECOND subscription, and this schema holds one id per
+   * profile, so the first would keep billing unreachable from the app.
+   * Lemon Squeezy prorates the change and keeps it to one subscription.
+   *
+   * The customer portal does the same thing, but only for an activated store -
+   * before activation it answers "This store has not been activated", which is
+   * a dead end for anyone still in test mode. The API works either way.
+   */
+  if (action === 'switch') {
+    const list = (name: string) =>
+      (Deno.env.get(name) ?? '')
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
+
+    if (wantTier !== 'team' && wantTier !== 'pro') {
+      return json({ error: 'Unknown plan.' }, 400);
+    }
+
+    const ids = wantTier === 'team' ? list('LEMON_TEAM_VARIANT_IDS') : list('LEMON_PRO_VARIANT_IDS');
+    if (ids.length === 0) {
+      return json(
+        { error: `No variants are configured for ${wantTier}. Set LEMON_${wantTier.toUpperCase()}_VARIANT_IDS.` },
+        500,
+      );
+    }
+
+    try {
+      // Ask Lemon Squeezy what each variant's billing interval is rather than
+      // encoding that in yet another secret. One wrong id in a secret is what
+      // stranded two paid subscriptions already.
+      // Named variantId, not id: `id` a few lines up is the SUBSCRIPTION, and
+      // the PATCH below addresses it. Shadowing it here would read as though
+      // the two were the same thing, in the one place where confusing them
+      // would move the wrong customer onto the wrong plan.
+      const candidates: VariantChoice[] = [];
+      for (const variantId of ids) {
+        const v = await lemon(`/variants/${variantId}`, { method: 'GET' });
+        candidates.push({ id: variantId, interval: v?.data?.attributes?.interval ?? null });
+      }
+
+      const target = chooseVariant(candidates, wantPeriod);
+      if (!target) {
+        return json({ error: 'No matching plan for that billing period.' }, 409);
+      }
+
+      const body = await lemon(`/subscriptions/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          data: {
+            type: 'subscriptions',
+            id: String(id),
+            attributes: { variant_id: Number(target) },
+          },
+        }),
+      });
+
+      const attributes = body?.data?.attributes ?? {};
+      const { data: updated, error: writeError } = await admin
+        .from('profiles')
+        .update({
+          tier: wantTier,
+          subscription_status: 'active',
+          current_period_end: attributes.renews_at ?? attributes.ends_at ?? null,
+          lemon_variant_id: String(target),
+          lemon_variant_name: attributes.variant_name ?? null,
+        })
+        .eq('id', userId)
+        .select('subscription_status, current_period_end, tier')
+        .maybeSingle();
+
+      if (writeError) throw writeError;
+
+      return json({
+        ok: true,
+        status: updated?.subscription_status ?? 'active',
+        currentPeriodEnd: updated?.current_period_end ?? null,
+        tier: updated?.tier ?? wantTier,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Something went wrong.';
+      console.error('Plan switch failed', { userId, wantTier, wantPeriod, message });
       return json({ error: message }, 502);
     }
   }

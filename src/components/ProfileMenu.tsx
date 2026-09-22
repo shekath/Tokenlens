@@ -468,8 +468,12 @@ function SubscriptionPanel({
             );
         }}
       >
-        Change plan, card or invoices
+        Card and invoices at Lemon Squeezy
       </button>
+      <span className="muted" style={{ fontSize: 11 }}>
+        Opens Lemon Squeezy's customer portal, which needs the store to be activated.
+        Changing plan does not — use Plans and billing for that.
+      </span>
 
       {error ? <p className="notice notice--error">{error}</p> : null}
       {done ? <p className="notice notice--ok">{done}</p> : null}

@@ -251,15 +251,25 @@ while a Team subscription was active produced subscriptions 2548839 and
 2548862 alongside 2546402.
 
 So once `hasSubscription` is true, the pricing dialog offers **Switch to X**,
-which opens Lemon Squeezy's customer portal (`manage-subscription`, action
-`portal`). The portal prorates the change, charges the difference, applies the
-buyer's tax and keeps it to one subscription. The same link covers the card on
-file and the invoices, which is why the Subscription tab points at it too.
+which moves the existing subscription (`manage-subscription`, action `switch`)
+rather than selling another. Lemon Squeezy prorates the difference.
 
-Plan changes are deliberately **not** hand-rolled here. Doing so would mean
-mapping every (tier, period) to a numeric variant id in yet another secret —
-and a wrong variant id in a secret is precisely what stranded those two paid
-subscriptions.
+That first went through Lemon Squeezy's customer portal, which does the same
+job and covers the card and invoices besides. It turned out the portal needs an
+**activated store** — before activation it answers *"This store has not been
+activated"*, so it is a dead end for anyone still in test mode. The API works
+either way, so plan changes use it and the portal (action `portal`) stays for
+the card and the invoices, which only the merchant of record can show.
+
+The caller names a **tier**, never a variant id, and the variant is resolved
+from the same `LEMON_*_VARIANT_IDS` secrets the webhook trusts — so nobody can
+switch themselves onto an arbitrary price. Which of a tier's variants applies
+is decided by asking Lemon Squeezy for each one's billing interval rather than
+encoding it in yet another secret: one wrong id in a secret is what stranded
+two paid subscriptions already. `chooseVariant` in
+`functions/manage-subscription/plans.ts` holds that rule, and refuses rather
+than guessing when several variants exist and none match the period asked for.
+It is tested in `tests/planSwitch.test.mjs`.
 
 ### Keeping the open tab in step
 

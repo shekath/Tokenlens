@@ -3,7 +3,7 @@ import type { User } from '@supabase/supabase-js';
 import { checkoutBase, supabase, variantId } from './supabase';
 import { effectiveTier } from './billing';
 import { checkoutTarget, openCheckoutWindow } from './checkout';
-import { billingPortalUrl } from './profile';
+import { billingPortalUrl, changeSubscription } from './profile';
 import {
   entitlementsFor,
   type Entitlements,
@@ -57,8 +57,10 @@ export interface SubscriptionState {
   /** Why the last checkout attempt failed, or null. */
   checkoutError: string | null;
   dismissCheckoutError: () => void;
-  /** Opens Lemon Squeezy's customer portal: change plan, card, invoices. */
+  /** Opens Lemon Squeezy's customer portal: card, invoices, plan. */
   openBillingPortal: () => Promise<void>;
+  /** Moves the existing subscription to another plan, prorated. */
+  switchPlan: (tier: 'pro' | 'team', period: 'monthly' | 'annual') => Promise<void>;
 }
 
 /**
@@ -195,6 +197,22 @@ export function useSubscription(user: User | null): SubscriptionState {
     };
   }, [user, load]);
 
+  const switchPlan = useCallback(
+    async (tier: 'pro' | 'team', period: 'monthly' | 'annual') => {
+      setCheckoutError(null);
+      try {
+        await changeSubscription('switch', { tier, period });
+        // Lemon Squeezy has accepted it and the row is already written; this
+        // is just the local copy catching up without waiting for the webhook.
+        await load();
+      } catch (err) {
+        setCheckoutError(err instanceof Error ? err.message : 'Could not change your plan.');
+        throw err;
+      }
+    },
+    [load],
+  );
+
   const openBillingPortal = useCallback(async () => {
     setCheckoutError(null);
     try {
@@ -251,5 +269,6 @@ export function useSubscription(user: User | null): SubscriptionState {
     checkoutError,
     dismissCheckoutError: () => setCheckoutError(null),
     openBillingPortal,
+    switchPlan,
   };
 }

@@ -117,10 +117,13 @@ export interface SubscriptionChange {
  * Cancelling does not end access: Lemon Squeezy's "cancelled" means it will not
  * renew, and the paid period runs to current_period_end.
  */
-export async function changeSubscription(action: 'cancel' | 'resume'): Promise<SubscriptionChange> {
+export async function changeSubscription(
+  action: 'cancel' | 'resume' | 'switch',
+  plan?: { tier: 'pro' | 'team'; period: 'monthly' | 'annual' },
+): Promise<SubscriptionChange> {
   const { data, error } = await client().functions.invoke<
     SubscriptionChange & { error?: string }
-  >('manage-subscription', { body: { action } });
+  >('manage-subscription', { body: { action, ...plan } });
 
   if (error) {
     // functions.invoke reports a non-2xx as a FunctionsHttpError whose message

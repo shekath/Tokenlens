@@ -177,6 +177,7 @@ export default function App() {
   const [tab, setTab] = useState<TabId>('analyse');
   const [authOpen, setAuthOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
 
   const auth = useAuth();
   const sub = useSubscription(auth.user);
@@ -635,7 +636,17 @@ export default function App() {
         signedIn={Boolean(auth.user)}
         hasSubscription={Boolean(sub.profile?.hasSubscription)}
         error={sub.checkoutError}
-        onManage={() => void sub.openBillingPortal()}
+        switching={switching}
+        onSwitch={(plan: Plan, period) => {
+          setSwitching(true);
+          void sub
+            .switchPlan(plan.tier as 'pro' | 'team', period)
+            .then(() => setPricingOpen(false))
+            // The reason is already in sub.checkoutError, which the dialog
+            // shows; the dialog stays open so it can be read.
+            .catch(() => {})
+            .finally(() => setSwitching(false));
+        }}
         onCheckout={(plan: Plan, period) => {
           // Only on success. Closing regardless is what made a failed checkout
           // look like the dialog simply vanishing.
