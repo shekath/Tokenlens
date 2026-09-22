@@ -169,12 +169,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ error: 'Unknown plan.' }, 400);
     }
 
-    const ids = wantTier === 'team' ? list('LEMON_TEAM_VARIANT_IDS') : list('LEMON_PRO_VARIANT_IDS');
+    const secretName = `LEMON_${wantTier.toUpperCase()}_VARIANT_IDS`;
+    const ids = list(secretName);
     if (ids.length === 0) {
-      return json(
-        { error: `No variants are configured for ${wantTier}. Set LEMON_${wantTier.toUpperCase()}_VARIANT_IDS.` },
-        500,
-      );
+      // Log which LEMON_ secrets this isolate can actually see - names only,
+      // never values. "It is set" and "this function can see it" are different
+      // claims, and without this there is no way to tell them apart from the
+      // outside; the answer has been guessed at twice already.
+      let seen: string[] = [];
+      try {
+        seen = Object.keys(Deno.env.toObject()).filter((k) => k.startsWith('LEMON_')).sort();
+      } catch {
+        seen = ['<env listing not permitted>'];
+      }
+      console.error('No variants configured', { wantTier, secretName, lemonSecretsVisible: seen });
+      return json({ error: `No variants are configured for ${wantTier}. Set ${secretName}.` }, 500);
     }
 
     try {
