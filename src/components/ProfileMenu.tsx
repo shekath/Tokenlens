@@ -18,6 +18,7 @@ import {
   formatAmount,
   formatBillingDate,
   formatCard,
+  planLabel,
   statusLabel,
   titleCase,
 } from '../lib/billing';
@@ -417,7 +418,7 @@ function SubscriptionPanel({
       <dl className="factlist">
         <div>
           <dt>Plan</dt>
-          <dd>{profile.planName ?? titleCase(profile.tier)}</dd>
+          <dd>{planLabel(profile.planName, profile.tier)}</dd>
         </div>
         <div>
           <dt>Status</dt>
@@ -429,7 +430,7 @@ function SubscriptionPanel({
         </div>
         <div>
           <dt>Amount</dt>
-          <dd>{amount ?? 'Not charged yet'}</dd>
+          <dd>{amount ?? 'Not recorded'}</dd>
         </div>
         {card ? (
           <div>
@@ -439,12 +440,11 @@ function SubscriptionPanel({
         ) : null}
       </dl>
 
-      {amount ? (
-        <p className="muted" style={{ fontSize: 11, margin: 0 }}>
-          The amount is what Lemon Squeezy last charged, tax included. It is the merchant
-          of record and issues the receipts.
-        </p>
-      ) : null}
+      <p className="muted" style={{ fontSize: 11, margin: 0 }}>
+        {amount
+          ? 'The amount is what Lemon Squeezy last charged, tax included. It is the merchant of record and issues the receipts.'
+          : 'No invoice has been recorded against this subscription yet. Lemon Squeezy has the receipts either way — it is the merchant of record.'}
+      </p>
 
       {error ? <p className="notice notice--error">{error}</p> : null}
       {done ? <p className="notice notice--ok">{done}</p> : null}

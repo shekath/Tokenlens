@@ -187,9 +187,12 @@ variant list, and each row's "Share" link ends in the id the browser needs.
 |---|---|
 | URL | `https://iashboyuhcbhsrvkfsuk.supabase.co/functions/v1/lemon-webhook` |
 | Signing secret | anything long and random — you set it, then paste the same value into Supabase |
-| Events | `subscription_created`, `subscription_updated`, `subscription_cancelled`, `subscription_resumed`, `subscription_expired`, `subscription_paused`, `subscription_unpaused`, `subscription_payment_failed` |
+| Events | `subscription_created`, `subscription_updated`, `subscription_cancelled`, `subscription_resumed`, `subscription_expired`, `subscription_paused`, `subscription_unpaused`, `subscription_payment_failed`, **`subscription_payment_success`** |
 
 Any other event is acknowledged and ignored, so selecting more is harmless.
+Selecting fewer is not: `subscription_payment_success` is the only source of
+the amount on the account page, and without it the Subscription tab has no
+figure to show even though the customer has been charged.
 
 **3. Edge Function secrets.** Supabase → Edge Functions → Secrets:
 
@@ -228,6 +231,21 @@ select p.email, p.tier, p.subscription_status, p.current_period_end,
 A Team purchase showing `tier = 'pro'` means the variant lists are the wrong
 way round. Nothing at all means the webhook never arrived — Lemon Squeezy's
 delivery log has the response, and 401 means the signing secret does not match.
+
+### Keeping the open tab in step
+
+`useSubscription` subscribes to `postgres_changes` on `profiles` so the app
+unlocks the moment the webhook writes the tier. That needs the table to be in
+the `supabase_realtime` publication — it was not, so the channel connected and
+sat silent, and a customer who had just paid still saw an active Upgrade
+button. Migration 0006 adds it. Realtime applies RLS per subscriber and the
+policy grants SELECT on `id = auth.uid()` only, so each user hears about their
+own row and nobody else's.
+
+The hook also refetches when the tab regains focus. Checkout happens in another
+tab, so coming back to this one is the most reliable signal there is, and unlike
+the channel it depends on nothing but one row and an HTTP request. Both paths
+exist because each covers what the other misses.
 
 ### Managing a subscription
 

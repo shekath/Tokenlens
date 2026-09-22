@@ -542,6 +542,40 @@ end;
 $$;
 
 \echo ''
+\echo '== the browser can hear about its own billing changes =='
+-- The channel in useSubscription sat connected and silent because the
+-- publication was empty, so a customer who had just paid still saw an active
+-- Upgrade button. Realtime applies RLS per subscriber, so publishing the table
+-- exposes each user's own row and nothing else - the policy is the boundary,
+-- not the client's filter.
+select assert(
+  exists (
+    select 1
+      from pg_publication_rel pr
+      join pg_publication p on p.oid = pr.prpubid
+      join pg_class c on c.oid = pr.prrelid
+      join pg_namespace n on n.oid = c.relnamespace
+     where p.pubname = 'supabase_realtime'
+       and n.nspname = 'public'
+       and c.relname = 'profiles'
+  ),
+  'profiles is published to supabase_realtime'
+);
+select assert(
+  not exists (
+    select 1
+      from pg_publication_rel pr
+      join pg_publication p on p.oid = pr.prpubid
+      join pg_class c on c.oid = pr.prrelid
+      join pg_namespace n on n.oid = c.relnamespace
+     where p.pubname = 'supabase_realtime'
+       and n.nspname = 'public'
+       and c.relname = 'billing_events'
+  ),
+  'and the billing ledger is not - it has no reader and no policy'
+);
+
+\echo ''
 \echo '== an empty claims string does not break profile updates =='
 -- current_setting(..., true) returns '' rather than NULL when the GUC is set
 -- empty. The first version of the guard only tested for NULL, reached

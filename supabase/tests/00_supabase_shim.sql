@@ -108,3 +108,16 @@ begin
   perform set_config('request.jwt.claims', '', false);
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Realtime
+-- ---------------------------------------------------------------------------
+-- Supabase creates this publication; Postgres does not. Migration 0006 adds
+-- public.profiles to it, and without this the suite stops there.
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+end;
+$$;

@@ -127,3 +127,17 @@ export function titleCase(value: string): string {
 export function statusLabel(status: string): string {
   return titleCase(status.replace(/_/g, ' '));
 }
+
+/**
+ * What to call the plan.
+ *
+ * Lemon Squeezy names the only variant of a single-variant product "Default",
+ * and it reports that in every webhook. Showing someone "Default" where their
+ * plan should be is worse than showing nothing, so fall back to our own name
+ * for the tier they are actually on.
+ */
+export function planLabel(planName: string | null, tier: string): string {
+  const name = planName?.trim();
+  if (!name || /^default$/i.test(name)) return titleCase(tier);
+  return name;
+}

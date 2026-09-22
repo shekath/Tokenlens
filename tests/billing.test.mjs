@@ -154,3 +154,20 @@ test('enum values are shown the way a person writes them', async () => {
   assert.equal(titleCase('pro'), 'Pro');
   assert.equal(titleCase(''), '');
 });
+
+test('a single-variant product does not show up as "Default"', async () => {
+  const { planLabel } = await import('../src/lib/billing.ts');
+  // Lemon Squeezy names the only variant of a single-variant product
+  // "Default" and reports that in every webhook. It is what this project's
+  // own store sends today.
+  assert.equal(planLabel('Default', 'team'), 'Team');
+  assert.equal(planLabel('default', 'pro'), 'Pro');
+  assert.equal(planLabel('  ', 'pro'), 'Pro');
+  assert.equal(planLabel(null, 'pro'), 'Pro');
+});
+
+test('a real variant name is used as given', async () => {
+  const { planLabel } = await import('../src/lib/billing.ts');
+  assert.equal(planLabel('Pro Monthly', 'pro'), 'Pro Monthly');
+  assert.equal(planLabel('Team Annual (Default rate)', 'team'), 'Team Annual (Default rate)');
+});

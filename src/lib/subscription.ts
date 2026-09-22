@@ -144,8 +144,11 @@ export function useSubscription(user: User | null): SubscriptionState {
     void load();
   }, [load]);
 
-  // Billing state changes out of band, when the webhook writes the row. Listening
-  // to it means the UI unlocks on return from checkout without a manual reload.
+  // Billing state changes out of band, when the webhook writes the row, so the
+  // app has to find out somehow. This listens; the effect below asks. Both,
+  // because each covers what the other misses: realtime needs the table in the
+  // supabase_realtime publication (it was not, for the whole life of this code
+  // - see migration 0006) and a live WebSocket, and neither is guaranteed.
   useEffect(() => {
     const client = supabase;
     if (!client || !user) return;
@@ -161,6 +164,31 @@ export function useSubscription(user: User | null): SubscriptionState {
       .subscribe();
     return () => {
       void client.removeChannel(channel);
+    };
+  }, [user, load]);
+
+  // Checkout happens in another tab. Coming back to this one is the single most
+  // reliable signal that something may have changed, and unlike the channel
+  // above it needs nothing of the server but one row.
+  useEffect(() => {
+    if (!supabase || !user) return;
+    let last = 0;
+
+    const recheck = () => {
+      if (document.visibilityState !== 'visible') return;
+      // Alt-tabbing is not a billing event; one refresh every few seconds is
+      // plenty to catch a return from checkout.
+      const now = Date.now();
+      if (now - last < 4000) return;
+      last = now;
+      void load();
+    };
+
+    window.addEventListener('focus', recheck);
+    document.addEventListener('visibilitychange', recheck);
+    return () => {
+      window.removeEventListener('focus', recheck);
+      document.removeEventListener('visibilitychange', recheck);
     };
   }, [user, load]);
 
