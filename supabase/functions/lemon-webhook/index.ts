@@ -100,38 +100,45 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const query = supabase.from('profiles').update(decision.patch);
-    const { data, error } =
-      decision.kind === 'applyToUser'
-        ? await query.eq('id', decision.userId).select('id')
-        : await query.eq('lemon_subscription_id', decision.subscriptionId).select('id');
+    if (decision.kind === 'upsert') {
+      // The subscription id is the primary key, so this is exact and repeats
+      // harmlessly. A second subscription on the same account is now an
+      // ordinary row rather than something that overwrites the first.
+      // `tier` is deliberately not defaulted here. The column defaults to
+      // 'free' for a new row, and leaving it out of the payload means an
+      // upsert that has nothing to say about the tier does not touch it - so a
+      // cancellation, which keeps whatever the subscription already grants,
+      // cannot flatten a live Pro row to free on its way past.
+      const { error } = await supabase.from('subscriptions').upsert(
+        {
+          lemon_subscription_id: decision.subscriptionId,
+          user_id: decision.userId,
+          ...decision.patch,
+        },
+        { onConflict: 'lemon_subscription_id' },
+      );
+      if (error) throw error;
+    } else {
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .update(decision.patch)
+        .eq('lemon_subscription_id', decision.subscriptionId)
+        .select('lemon_subscription_id');
 
-    if (error) throw error;
+      if (error) throw error;
 
-    // An UPDATE matching nothing is not an error to PostgREST, so without this
-    // check it would be acknowledged and forgotten. What a miss MEANS differs
-    // by how the row was addressed, and so does what to do about it.
-    if (!data || data.length === 0) {
-      if (decision.kind === 'applyToUser') {
-        // A payment whose custom_data names an account that does not exist.
-        // Money has been taken and nobody upgraded, and a retry genuinely can
-        // fix it once the cause is found, so fail loudly.
-        throw new Error(`no profile with id ${decision.userId}`);
+      // These events name no account, so there is nothing to create from. A
+      // miss means this deployment has never seen the subscription - one that
+      // belongs to another environment sharing the store, or one refused at
+      // creation. Retrying cannot make it match, so acknowledge it and say so.
+      if (!data || data.length === 0) {
+        console.warn('Event for an untracked subscription', {
+          eventId,
+          eventName,
+          subscriptionId: decision.subscriptionId,
+        });
+        return Response.json({ received: true, untrackedSubscription: decision.subscriptionId });
       }
-
-      // A subscription this deployment does not track: one refused at creation,
-      // one superseded because a profile holds a single subscription id, or one
-      // belonging to another environment sharing the store. Retrying cannot
-      // make it match, and returning 5xx only buys a retry storm - four of
-      // them, for two cancelled duplicates, is how this was found. Acknowledge
-      // it and keep the ledger row, which holds the whole payload if anyone
-      // needs to reconstruct what happened.
-      console.warn('Event for an untracked subscription', {
-        eventId,
-        eventName,
-        subscriptionId: decision.subscriptionId,
-      });
-      return Response.json({ received: true, untrackedSubscription: decision.subscriptionId });
     }
   } catch (err) {
     // Release the claim so the retry can do real work rather than short-circuit

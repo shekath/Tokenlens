@@ -43,6 +43,26 @@ const admin = createClient(
   { auth: { persistSession: false } },
 );
 
+/**
+ * What the account looks like now, after the trigger has re-derived it.
+ *
+ * Returned instead of echoing what was asked for: with several subscriptions
+ * possible, cancelling one does not necessarily change the tier, and telling
+ * the UI otherwise would be a confident lie.
+ */
+async function accountState(userId: string) {
+  const { data } = await admin
+    .from('profiles')
+    .select('tier, subscription_status, current_period_end')
+    .eq('id', userId)
+    .maybeSingle();
+  return {
+    tier: data?.tier ?? null,
+    status: data?.subscription_status ?? null,
+    currentPeriodEnd: data?.current_period_end ?? null,
+  };
+}
+
 /** The caller, from their own token. Never from anything they sent. */
 async function callerId(req: Request): Promise<string | null> {
   const header = req.headers.get('Authorization') ?? '';
@@ -217,27 +237,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
 
       const attributes = body?.data?.attributes ?? {};
-      const { data: updated, error: writeError } = await admin
-        .from('profiles')
+
+      // The subscription row, not the profile. profiles.tier is a cache that a
+      // trigger derives from whichever subscriptions are live (0007), so
+      // writing it here would put a tier on the account that no subscription
+      // backs - and the next event would silently correct it.
+      const { error: writeError } = await admin
+        .from('subscriptions')
         .update({
           tier: wantTier,
-          subscription_status: 'active',
+          status: 'active',
           current_period_end: attributes.renews_at ?? attributes.ends_at ?? null,
           lemon_variant_id: String(target),
           lemon_variant_name: attributes.variant_name ?? null,
         })
-        .eq('id', userId)
-        .select('subscription_status, current_period_end, tier')
-        .maybeSingle();
+        .eq('lemon_subscription_id', id)
+        // Belt and braces: `id` came from this caller's own profile, so this
+        // cannot match anyone else's row. Saying so in the query means it
+        // stays true if that ever stops being the case.
+        .eq('user_id', userId);
 
       if (writeError) throw writeError;
 
-      return json({
-        ok: true,
-        status: updated?.subscription_status ?? 'active',
-        currentPeriodEnd: updated?.current_period_end ?? null,
-        tier: updated?.tier ?? wantTier,
-      });
+      return json({ ok: true, ...(await accountState(userId)) });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Something went wrong.';
       console.error('Plan switch failed', { userId, wantTier, wantPeriod, message });
@@ -265,26 +287,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // exactly as it is, and lapses on its own (migration 0004).
     const patch =
       action === 'cancel'
-        ? { subscription_status: 'cancelled', current_period_end: endsAt ?? renewsAt }
-        : { subscription_status: 'active', current_period_end: renewsAt ?? endsAt };
+        ? { status: 'cancelled', current_period_end: endsAt ?? renewsAt }
+        : { status: 'active', current_period_end: renewsAt ?? endsAt };
 
-    const { data: updated, error: writeError } = await admin
-      .from('profiles')
+    const { error: writeError } = await admin
+      .from('subscriptions')
       .update(patch)
-      .eq('id', userId)
-      .select('subscription_status, current_period_end, tier')
-      .maybeSingle();
+      .eq('lemon_subscription_id', id)
+      .eq('user_id', userId);
 
     if (writeError) throw writeError;
 
-    return json({
-      ok: true,
-      // Lemon Squeezy has already accepted it; if our own write failed we would
-      // have thrown above. Reporting its answer, not our request.
-      status: updated?.subscription_status ?? patch.subscription_status,
-      currentPeriodEnd: updated?.current_period_end ?? patch.current_period_end,
-      tier: updated?.tier ?? null,
-    });
+    // Read the account back rather than echoing the request: the tier is
+    // derived from every live subscription, so cancelling one does not
+    // necessarily change it - another may still be granting more.
+    return json({ ok: true, ...(await accountState(userId)) });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Something went wrong.';
     console.error('Subscription action failed', { userId, action, message });

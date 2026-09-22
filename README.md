@@ -266,6 +266,8 @@ src/
   styles/            design tokens, then everything else
 supabase/
   migrations/        schema, RLS policies, triggers
+                     0007 is the one worth reading: subscriptions are rows,
+                     and the account's tier is derived from the live ones
   functions/         the Lemon Squeezy webhook
 tests/               unit tests (node:test, run against the TypeScript directly)
 scripts/             browser-based layout checks, billing config preflight

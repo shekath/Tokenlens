@@ -42,11 +42,11 @@ const active = (variant = '111') => ({
 
 test('a Pro purchase grants Pro', () => {
   const d = decide(event('subscription_created', active('111')), VARIANTS);
-  assert.equal(d.kind, 'applyToUser');
+  assert.equal(d.kind, 'upsert');
   assert.equal(d.userId, USER);
   assert.equal(d.patch.tier, 'pro');
-  assert.equal(d.patch.subscription_status, 'active');
-  assert.equal(d.patch.lemon_subscription_id, '987654');
+  assert.equal(d.patch.status, 'active');
+  assert.equal(d.subscriptionId, '987654');
   assert.equal(d.patch.lemon_customer_id, '424242');
   assert.equal(d.patch.current_period_end, '2026-10-21T17:00:00.000000Z');
 });
@@ -74,7 +74,7 @@ test('a purchase with no user id is refused before anything is written', () => {
 test('a trial grants the tier and reads as trialing', () => {
   const d = decide(event('subscription_created', { ...active(), status: 'on_trial' }), VARIANTS);
   assert.equal(d.patch.tier, 'pro');
-  assert.equal(d.patch.subscription_status, 'trialing');
+  assert.equal(d.patch.status, 'trialing');
 });
 
 test('an upgrade from Pro to Team is just an update', () => {
@@ -93,9 +93,9 @@ test('cancelling keeps the tier until the period the customer paid for ends', ()
     }),
     VARIANTS,
   );
-  assert.equal(d.kind, 'applyToSubscription');
+  assert.equal(d.kind, 'update');
   assert.equal(d.subscriptionId, '987654');
-  assert.equal(d.patch.subscription_status, 'cancelled');
+  assert.equal(d.patch.status, 'cancelled');
   assert.equal(d.patch.current_period_end, '2026-10-21T17:00:00.000000Z');
   assert.ok(!('tier' in d.patch), 'the tier must be left alone, not set to free');
 });
@@ -105,8 +105,11 @@ test('expiry is what actually ends access', () => {
     event('subscription_expired', { status: 'expired', ends_at: '2026-10-21T17:00:00.000000Z' }),
     VARIANTS,
   );
-  assert.equal(d.patch.tier, 'free');
-  assert.equal(d.patch.subscription_status, 'inactive');
+  // The STATUS ends it, not a rewrite of the tier. The subscription still
+  // grants Pro on paper; private.subscription_is_live() is what stops counting
+  // it, and leaving the tier alone keeps the row honest about what was bought.
+  assert.equal(d.patch.status, 'inactive');
+  assert.ok(!('tier' in d.patch));
 });
 
 test('a cancelled status arriving on an update event also keeps the tier', () => {
@@ -114,21 +117,22 @@ test('a cancelled status arriving on an update event also keeps the tier', () =>
     event('subscription_updated', { ...active(), status: 'cancelled', ends_at: '2026-11-01T00:00:00Z' }),
     VARIANTS,
   );
-  assert.equal(d.kind, 'applyToUser');
+  assert.equal(d.kind, 'upsert');
   assert.ok(!('tier' in d.patch));
-  assert.equal(d.patch.subscription_status, 'cancelled');
+  assert.equal(d.patch.status, 'cancelled');
   assert.equal(d.patch.current_period_end, '2026-11-01T00:00:00Z');
 });
 
 test('pausing stops access', () => {
   const d = decide(event('subscription_paused', { status: 'paused' }), VARIANTS);
-  assert.equal(d.patch.tier, 'free');
+  assert.equal(d.patch.status, 'inactive');
+  assert.ok(!('tier' in d.patch), 'a pause is not a change of plan');
 });
 
 test('resuming restores it', () => {
   const d = decide(event('subscription_resumed', active('111')), VARIANTS);
   assert.equal(d.patch.tier, 'pro');
-  assert.equal(d.patch.subscription_status, 'active');
+  assert.equal(d.patch.status, 'active');
 });
 
 // ------------------------------------------------------------- failed pay --
@@ -137,21 +141,48 @@ test('a failed payment marks past due without locking anyone out', () => {
   // Lemon Squeezy retries the card for days. A first failed retry is not a
   // reason to take the product away.
   const d = decide(event('subscription_payment_failed', { status: 'past_due' }), VARIANTS);
-  assert.equal(d.kind, 'applyToSubscription');
-  assert.equal(d.patch.subscription_status, 'past_due');
+  assert.equal(d.kind, 'update');
+  assert.equal(d.patch.status, 'past_due');
   assert.ok(!('tier' in d.patch));
 });
 
 test('a past_due status on an update event keeps the tier too', () => {
   const d = decide(event('subscription_updated', { ...active(), status: 'past_due' }), VARIANTS);
   assert.ok(!('tier' in d.patch));
-  assert.equal(d.patch.subscription_status, 'past_due');
+  assert.equal(d.patch.status, 'past_due');
 });
 
 // ------------------------------------------------------------------ other --
 
 test('an event with no subscription id is refused', () => {
   const d = decide(event('subscription_cancelled', { status: 'cancelled' }, { id: '' }), VARIANTS);
+  assert.equal(d.kind, 'reject');
+  assert.equal(d.status, 400);
+});
+
+test('an upsert that keeps the tier omits the column entirely', () => {
+  // Not `tier: 'free'`. The upsert spreads this patch over an existing row, so
+  // naming the column at all would flatten a live Pro subscription to free on
+  // the way past. Absent means "leave it alone"; the column's own default
+  // fills a row being created.
+  const d = decide(
+    event('subscription_updated', { ...active(), status: 'cancelled', ends_at: '2026-11-01T00:00:00Z' }),
+    VARIANTS,
+  );
+  assert.ok(!('tier' in d.patch), 'tier must not appear in the payload');
+  assert.equal(Object.prototype.hasOwnProperty.call(d.patch, 'tier'), false);
+});
+
+test('an expiry names no account, so it can only update a row that exists', () => {
+  // These carry no custom_data, so there is nothing to create a row from - and
+  // creating one would invent a subscription for nobody.
+  const d = decide(event('subscription_expired', { status: 'expired' }), VARIANTS);
+  assert.equal(d.kind, 'update');
+  assert.ok(!('userId' in d));
+});
+
+test('a claiming event with no subscription id is refused', () => {
+  const d = decide(event('subscription_created', active(), { id: '' }), VARIANTS);
   assert.equal(d.kind, 'reject');
   assert.equal(d.status, 400);
 });
@@ -188,7 +219,7 @@ const invoice = (over = {}) => ({
 
 test('a paid invoice records what was actually charged', () => {
   const d = decide(invoice(), VARIANTS);
-  assert.equal(d.kind, 'applyToSubscription');
+  assert.equal(d.kind, 'update');
   // The subscription, not the invoice id: matching on data.id would update
   // nobody, and "no row matched" is a 500.
   assert.equal(d.subscriptionId, '987654');

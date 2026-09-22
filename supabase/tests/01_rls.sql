@@ -21,6 +21,29 @@ begin
 end;
 $$;
 
+-- Grants a tier the way the product does: a live subscription row. Writing
+-- profiles.tier grants nothing since 0007 - it is a cache, and current_tier()
+-- reads the subscriptions. Every test that used to UPDATE the column goes
+-- through here instead, which is also what keeps them honest.
+create or replace function test_grant_tier(uid uuid, t text)
+returns void language plpgsql as $$
+begin
+  -- One subscription at a time, so a later grant replaces an earlier one
+  -- rather than being outranked by it.
+  delete from public.subscriptions where user_id = uid;
+  if t = 'free' then
+    return;
+  end if;
+  insert into public.subscriptions (
+    lemon_subscription_id, user_id, tier, status, current_period_end
+  )
+  values (
+    'test_' || replace(uid::text, '-', '') , uid, t::public.user_tier, 'active',
+    timezone('utc', now()) + interval '30 days'
+  );
+end;
+$$;
+
 -- ---------------------------------------------------------------- fixtures --
 select test_reset();
 
@@ -88,12 +111,22 @@ select assert(
   (select tier from public.profiles where id = '11111111-1111-1111-1111-111111111111') = 'pro',
   'the service role is exempt from the billing-column lock'
 );
+-- But the cache is only a cache. Since 0007 the tier that is ENFORCED comes
+-- from the subscriptions, so a profiles.tier nobody paid for grants nothing.
+select assert(
+  private.current_tier('11111111-1111-1111-1111-111111111111') = 'free',
+  'and a tier written straight onto the profile still enforces as free'
+);
+select test_as_service();
+update public.profiles set lemon_subscription_id = null
+ where id = '11111111-1111-1111-1111-111111111111';
+select test_reset();
 
 \echo ''
 \echo '== free-tier save cap =='
 -- Back to free so the cap applies.
 select test_as_service();
-update public.profiles set tier = 'free' where id = '11111111-1111-1111-1111-111111111111';
+select test_grant_tier('11111111-1111-1111-1111-111111111111', 'free');
 select test_reset();
 
 select test_as_user('11111111-1111-1111-1111-111111111111');
@@ -122,7 +155,7 @@ end $$;
 
 select test_reset();
 select test_as_service();
-update public.profiles set tier = 'pro' where id = '11111111-1111-1111-1111-111111111111';
+select test_grant_tier('11111111-1111-1111-1111-111111111111', 'pro');
 select test_reset();
 select test_as_user('11111111-1111-1111-1111-111111111111');
 insert into public.saved_estimates (user_id, project_title, model_id, input_tokens, output_tokens, estimated_cost_usd)
@@ -150,7 +183,7 @@ end $$;
 
 select test_reset();
 select test_as_service();
-update public.profiles set tier = 'team' where id = '11111111-1111-1111-1111-111111111111';
+select test_grant_tier('11111111-1111-1111-1111-111111111111', 'team');
 select test_reset();
 
 select test_as_user('11111111-1111-1111-1111-111111111111');
@@ -266,7 +299,7 @@ drop table public.cap_demo;
 -- The shipped cap counts through a SECURITY DEFINER function, outside RLS, so
 -- it does not depend on the SELECT policy at all.
 select test_as_service();
-update public.profiles set tier = 'free' where id = '11111111-1111-1111-1111-111111111111';
+select test_grant_tier('11111111-1111-1111-1111-111111111111', 'free');
 select test_reset();
 drop policy "Users read own estimates" on public.saved_estimates;
 
@@ -415,36 +448,32 @@ select assert(
 -- The webhook leaves the tier alone when Lemon Squeezy says "cancelled",
 -- because the customer has paid to the end of the period. If the expiry event
 -- is then missed, only the database stops the entitlement.
---
--- Its own user, so the assertions do not depend on what earlier sections left
--- lying around.
 select test_reset();
 
 insert into auth.users (id, email, raw_user_meta_data) values
   ('44444444-4444-4444-4444-444444444444', 'dana@example.com', '{"full_name":"Dana"}');
 
 select test_as_service();
-update public.profiles
-   set tier = 'pro', subscription_status = 'active',
-       current_period_end = timezone('utc', now()) + interval '10 days'
- where id = '44444444-4444-4444-4444-444444444444';
+insert into public.subscriptions (lemon_subscription_id, user_id, tier, status, current_period_end)
+values ('sub_dana', '44444444-4444-4444-4444-444444444444', 'pro', 'active', timezone('utc', now()) + interval '10 days');
 
 select assert(
   private.current_tier('44444444-4444-4444-4444-444444444444') = 'pro',
   'an active subscription enforces its tier'
 );
+select assert(
+  (select tier from public.profiles where id = '44444444-4444-4444-4444-444444444444') = 'pro',
+  'and the profile cache follows it without anyone writing the column'
+);
 
-update public.profiles set subscription_status = 'cancelled'
- where id = '44444444-4444-4444-4444-444444444444';
-
+update public.subscriptions set status = 'cancelled' where lemon_subscription_id = 'sub_dana';
 select assert(
   private.current_tier('44444444-4444-4444-4444-444444444444') = 'pro',
   'a cancellation keeps the tier until the paid period ends'
 );
 
-update public.profiles set current_period_end = timezone('utc', now()) - interval '1 minute'
- where id = '44444444-4444-4444-4444-444444444444';
-
+update public.subscriptions set current_period_end = timezone('utc', now()) - interval '1 minute'
+ where lemon_subscription_id = 'sub_dana';
 select assert(
   private.current_tier('44444444-4444-4444-4444-444444444444') = 'free',
   'and drops it the moment that period is over, with no event needed'
@@ -452,21 +481,26 @@ select assert(
 
 -- The narrow part: a paying customer is not locked out by a renewal webhook we
 -- have not processed yet.
-update public.profiles
-   set subscription_status = 'active',
-       current_period_end = timezone('utc', now()) - interval '1 day'
- where id = '44444444-4444-4444-4444-444444444444';
-
+update public.subscriptions
+   set status = 'active', current_period_end = timezone('utc', now()) - interval '1 day'
+ where lemon_subscription_id = 'sub_dana';
 select assert(
   private.current_tier('44444444-4444-4444-4444-444444444444') = 'pro',
   'an overdue renewal on an active subscription does not revoke access'
 );
 
+-- Dunning: the card is retried for days, and a first failure is not a reason
+-- to take the product away.
+update public.subscriptions set status = 'past_due' where lemon_subscription_id = 'sub_dana';
+select assert(
+  private.current_tier('44444444-4444-4444-4444-444444444444') = 'pro',
+  'nor does a payment still being retried'
+);
+
 -- And both policies read that function, so the free-tier cap comes back with it.
-update public.profiles
-   set subscription_status = 'cancelled',
-       current_period_end = timezone('utc', now()) - interval '1 day'
- where id = '44444444-4444-4444-4444-444444444444';
+update public.subscriptions
+   set status = 'cancelled', current_period_end = timezone('utc', now()) - interval '1 day'
+ where lemon_subscription_id = 'sub_dana';
 
 select test_as_user('44444444-4444-4444-4444-444444444444');
 
@@ -485,6 +519,59 @@ exception
   when others then
     raise exception 'FAILED: unexpected % (%)', sqlerrm, sqlstate;
 end $$;
+
+\echo ''
+\echo '== an account with two subscriptions gets the better of them =='
+-- The whole point of 0007. Before it, a profile held one subscription id, so
+-- the second purchase overwrote the first and whichever event arrived last
+-- decided the tier.
+select test_as_service();
+delete from public.saved_estimates where user_id = '44444444-4444-4444-4444-444444444444';
+delete from public.subscriptions where user_id = '44444444-4444-4444-4444-444444444444';
+
+insert into public.subscriptions (lemon_subscription_id, user_id, tier, status, current_period_end) values
+  ('sub_dana_pro',  '44444444-4444-4444-4444-444444444444', 'pro',  'active', timezone('utc', now()) + interval '20 days'),
+  ('sub_dana_team', '44444444-4444-4444-4444-444444444444', 'team', 'active', timezone('utc', now()) + interval '10 days');
+
+select assert(
+  private.current_tier('44444444-4444-4444-4444-444444444444') = 'team',
+  'holding Pro and Team enforces Team, not whichever was written last'
+);
+select assert(
+  (select tier from public.profiles where id = '44444444-4444-4444-4444-444444444444') = 'team',
+  'and the profile cache agrees'
+);
+
+-- Cancelling the better one, mid-period, must not demote anybody yet.
+update public.subscriptions set status = 'cancelled' where lemon_subscription_id = 'sub_dana_team';
+select assert(
+  private.current_tier('44444444-4444-4444-4444-444444444444') = 'team',
+  'cancelling Team still leaves Team until its period ends'
+);
+
+update public.subscriptions set current_period_end = timezone('utc', now()) - interval '1 hour'
+ where lemon_subscription_id = 'sub_dana_team';
+select assert(
+  private.current_tier('44444444-4444-4444-4444-444444444444') = 'pro',
+  'and when it does end, the Pro subscription underneath is still theirs'
+);
+select assert(
+  (select lemon_subscription_id from public.profiles where id = '44444444-4444-4444-4444-444444444444') = 'sub_dana_pro',
+  'the profile now points at the subscription actually granting the tier'
+);
+
+-- An event for a subscription of somebody else's must not move this account.
+select assert(
+  (select count(*) from public.subscriptions where user_id = '44444444-4444-4444-4444-444444444444') = 2,
+  'both subscriptions are still recorded - nothing was overwritten'
+);
+
+delete from public.subscriptions where user_id = '44444444-4444-4444-4444-444444444444';
+select assert(
+  private.current_tier('44444444-4444-4444-4444-444444444444') = 'free'
+    and (select tier from public.profiles where id = '44444444-4444-4444-4444-444444444444') = 'free',
+  'and with none left the account is free again'
+);
 
 \echo ''
 \echo '== the billing columns are the webhook's to write, not the user's =='

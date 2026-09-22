@@ -240,6 +240,54 @@ A Team purchase showing `tier = 'pro'` means the variant lists are the wrong
 way round. Nothing at all means the webhook never arrived — Lemon Squeezy's
 delivery log has the response, and 401 means the signing secret does not match.
 
+## Subscriptions
+
+One row per Lemon Squeezy subscription, keyed by its id. **The account's tier
+is derived from whichever of them are live** — `private.current_tier()` reads
+the subscriptions, not the cached column on `profiles`.
+
+`profiles` still carries `tier`, `subscription_status` and the billing display
+columns, but they are now a **cache** of the winning subscription, maintained
+by a trigger. That is what let this change land without touching the client:
+the account page, the realtime channel and the RLS policies all keep working
+off the row they already read. The authority is `subscriptions`; the profile
+is a mirror, and writing `profiles.tier` directly grants nothing — the SQL
+suite asserts exactly that.
+
+| Question | Answer |
+|---|---|
+| Which subscriptions count? | `private.subscription_is_live()` — active, trialing or past_due; cancelled while `current_period_end` is still ahead |
+| Which one wins? | the highest tier among the live ones, then the furthest period end |
+| Who writes them? | the service role only. A user who could write these could grant themselves any tier, since this is what `current_tier()` reads |
+| What happens to a second subscription? | it is an ordinary second row. The account gets the better of the two, and nothing is overwritten |
+
+### Why this exists
+
+`profiles` held a single `lemon_subscription_id`, so an account could only be
+understood to have one subscription. Lemon Squeezy has no such rule, and the
+gap produced the same failure four times in one evening:
+
+- a second purchase overwrote the first, which kept billing untracked
+- cancelling the tracked one left the untracked one paying for nothing
+- events for the untracked one matched no row, so they 500'd and retried
+- a plan switch patched whichever id happened to be recorded at the time
+
+None of those were separate bugs. They were one modelling mistake seen from
+four angles, and no amount of care in the webhook could have fixed it, because
+the schema could not represent what was true.
+
+### Reconciling
+
+The backfill in 0007 can only recover the subscription `profiles` was tracking.
+Anything the old model lost is lost, and the way to find it is Lemon Squeezy's
+own subscription list: any subscription there whose id is absent from
+`public.subscriptions` is one this deployment does not know about.
+
+```sql
+select lemon_subscription_id, user_id, tier, status, current_period_end
+  from public.subscriptions order by user_id, current_period_end desc;
+```
+
 ### Never a second checkout
 
 A customer on one plan must not be able to buy another. Lemon Squeezy will

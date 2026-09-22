@@ -18,14 +18,17 @@ export interface VariantMap {
 }
 
 /**
- * Columns to write. A key that is absent is deliberately left alone - that is
- * how "cancelled, but paid up until the 30th" keeps its tier.
+ * Columns to write on the SUBSCRIPTION row, not the profile. The account's
+ * tier is derived from whichever of its subscriptions are live (migration
+ * 0007), so this describes one subscription and never the account.
+ *
+ * A key that is absent is deliberately left alone - that is how "cancelled,
+ * but paid up until the 30th" keeps the tier it grants.
  */
-export interface ProfilePatch {
+export interface SubscriptionPatch {
   tier?: Tier;
-  subscription_status?: SubStatus;
+  status?: SubStatus;
   lemon_customer_id?: string | null;
-  lemon_subscription_id?: string | null;
   current_period_end?: string | null;
   lemon_variant_id?: string | null;
   lemon_variant_name?: string | null;
@@ -38,8 +41,10 @@ export interface ProfilePatch {
 export type Decision =
   | { kind: 'ignore'; why: string }
   | { kind: 'reject'; status: number; why: string }
-  | { kind: 'applyToUser'; userId: string; patch: ProfilePatch }
-  | { kind: 'applyToSubscription'; subscriptionId: string; patch: ProfilePatch };
+  /** The event names its account, so the row can be created if it is new. */
+  | { kind: 'upsert'; userId: string; subscriptionId: string; patch: SubscriptionPatch }
+  /** The event names only a subscription, so the row must already exist. */
+  | { kind: 'update'; subscriptionId: string; patch: SubscriptionPatch };
 
 /** Events that carry custom_data.user_id and therefore identify the account. */
 const CLAIMING_EVENTS = new Set([
@@ -140,11 +145,14 @@ export function decide(payload: Record<string, any>, variants: VariantMap): Deci
       return { kind: 'reject', status: 400, why: 'missing custom_data.user_id' };
     }
 
+    if (!subscriptionId) {
+      return { kind: 'reject', status: 400, why: 'event carries no subscription id' };
+    }
+
     const plan = statusPlan(String(attributes.status ?? ''));
-    const patch: ProfilePatch = {
-      subscription_status: plan.status,
+    const patch: SubscriptionPatch = {
+      status: plan.status,
       lemon_customer_id: attributes.customer_id ? String(attributes.customer_id) : null,
-      lemon_subscription_id: subscriptionId || null,
       current_period_end: periodEnd(attributes),
       // What the customer sees in their own account, in Lemon Squeezy's words
       // rather than ours: they bought a named plan, not a tier enum.
@@ -165,11 +173,16 @@ export function decide(payload: Record<string, any>, variants: VariantMap): Deci
       }
       patch.tier = tier;
     } else if (plan.tier === 'free') {
+      // Not "the account is free" - this subscription grants nothing while it
+      // is in this state, and private.subscription_is_live() is what decides
+      // whether it counts at all. Other subscriptions on the account are
+      // untouched, which is the whole point of 0007.
       patch.tier = 'free';
     }
-    // 'keep' leaves patch.tier undefined, so the column is not written.
+    // 'keep' leaves patch.tier undefined, so the subscription goes on granting
+    // whatever it already grants.
 
-    return { kind: 'applyToUser', userId, patch };
+    return { kind: 'upsert', userId, subscriptionId, patch };
   }
 
   if (SUBSCRIPTION_EVENTS.has(eventName)) {
@@ -178,36 +191,24 @@ export function decide(payload: Record<string, any>, variants: VariantMap): Deci
     }
 
     if (eventName === 'subscription_payment_failed') {
-      return {
-        kind: 'applyToSubscription',
-        subscriptionId,
-        patch: { subscription_status: 'past_due' },
-      };
+      return { kind: 'update', subscriptionId, patch: { status: 'past_due' } };
     }
 
     if (eventName === 'subscription_expired') {
       // The period the customer paid for is over. This is the event that ends
       // access, not the cancellation that scheduled it.
       return {
-        kind: 'applyToSubscription',
+        kind: 'update',
         subscriptionId,
-        patch: {
-          tier: 'free',
-          subscription_status: 'inactive',
-          current_period_end: periodEnd(attributes),
-        },
+        patch: { status: 'inactive', current_period_end: periodEnd(attributes) },
       };
     }
 
     if (eventName === 'subscription_paused') {
       return {
-        kind: 'applyToSubscription',
+        kind: 'update',
         subscriptionId,
-        patch: {
-          tier: 'free',
-          subscription_status: 'inactive',
-          current_period_end: periodEnd(attributes),
-        },
+        patch: { status: 'inactive', current_period_end: periodEnd(attributes) },
       };
     }
 
@@ -215,12 +216,9 @@ export function decide(payload: Record<string, any>, variants: VariantMap): Deci
     // database expires it at current_period_end even if subscription_expired
     // never arrives (see migration 0004).
     return {
-      kind: 'applyToSubscription',
+      kind: 'update',
       subscriptionId,
-      patch: {
-        subscription_status: 'cancelled',
-        current_period_end: periodEnd(attributes),
-      },
+      patch: { status: 'cancelled', current_period_end: periodEnd(attributes) },
     };
   }
 
@@ -236,7 +234,7 @@ export function decide(payload: Record<string, any>, variants: VariantMap): Deci
 
     const total = Number(attributes.total);
     return {
-      kind: 'applyToSubscription',
+      kind: 'update',
       subscriptionId: onSubscription,
       patch: {
         // attributes.total is minor units and includes tax. The only honest
