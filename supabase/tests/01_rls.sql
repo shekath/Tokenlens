@@ -713,5 +713,58 @@ select assert(
 );
 
 select test_reset();
+
+\echo ''
+\echo '== every function we define resolves its names from a fixed path =='
+
+-- Migration 0007 shipped two helpers without SET search_path, and nothing here
+-- noticed; the Supabase linter did, later. A function without one resolves its
+-- names using whatever path its caller has, and several of these are called
+-- from SECURITY DEFINER code, so the resolution happens as the owner. This is
+-- the assertion that would have caught it.
+select assert(
+  not exists (
+    select 1
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname in ('public', 'private')
+       and p.prokind = 'f'
+       -- Extensions bring their own functions and are not ours to re-declare.
+       and not exists (
+         select 1 from pg_depend d
+          where d.objid = p.oid and d.deptype = 'e'
+       )
+       -- assert() and test_* are this suite's own scaffolding, created by the
+       -- shim and by this file. They exist only in the throwaway database and
+       -- ship to no environment.
+       and p.proname <> 'assert'
+       and p.proname not like 'test\_%'
+       and (p.proconfig is null or not exists (
+         select 1 from unnest(p.proconfig) as c
+          where c like 'search_path=%'
+       ))
+  ),
+  'every function in public and private pins its search_path'
+);
+
+-- pg_temp is writable by any signed-in user, so a definer function that names
+-- it is trusting a schema its callers control. Postgres only searches pg_temp
+-- for functions and operators when it is named, so the fix is to leave it out.
+select assert(
+  not exists (
+    select 1
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname in ('public', 'private')
+       and p.prosecdef
+       and p.proname in ('subscription_is_live', 'tier_rank')
+       and exists (
+         select 1 from unnest(coalesce(p.proconfig, '{}')) as c
+          where c like '%pg_temp%'
+       )
+  ),
+  'the helpers current_tier calls do not search pg_temp'
+);
+
 \echo ''
 \echo 'All RLS assertions passed.'
