@@ -57,9 +57,21 @@ export function hasPassword(user: User | null): boolean {
  *
  * A live session is not on its own proof that the person at the keyboard is the
  * account holder - a borrowed laptop has one. So where a password already
- * exists, it has to be produced before a new one is accepted; signInWithPassword
- * is the check, against the account's own email. Where none exists yet there is
- * nothing to produce, and the session is all there is.
+ * exists, it has to be produced before a new one is accepted.
+ *
+ * `current_password` goes to the server rather than being checked here first.
+ * The first version called signInWithPassword to validate it and then called
+ * updateUser, which is check-then-act: anyone holding a session could skip
+ * straight to updateUser and change the password without knowing the old one,
+ * because the gate lived in the browser. It also minted a whole new session as
+ * a side effect of validating. Handing the old password to updateUser makes
+ * GoTrue do both in one call, and turns "Require current password when
+ * changing password" in the project's auth settings into real enforcement
+ * rather than a promise this form makes on its own.
+ *
+ * An account created through Google has no password to produce, so the same
+ * form sets a first one - which is what makes the account reachable without
+ * Google afterwards.
  */
 export async function setPassword(
   user: User,
@@ -67,20 +79,27 @@ export async function setPassword(
   nextPassword: string,
 ): Promise<void> {
   const c = client();
-  if (hasPassword(user)) {
-    if (!currentPassword) throw new Error('Enter your current password.');
-    const email = user.email;
-    if (!email) throw new Error('This account has no email address to verify against.');
-    const { error: checkError } = await c.auth.signInWithPassword({
-      email,
-      password: currentPassword,
-    });
-    if (checkError) throw new Error('That is not your current password.');
-  }
+  const existing = hasPassword(user);
 
-  const { error } = await c.auth.updateUser({ password: nextPassword });
-  if (error) throw error;
+  if (existing && !currentPassword) throw new Error('Enter your current password.');
+
+  const { error } = await c.auth.updateUser(
+    existing && currentPassword
+      ? { password: nextPassword, current_password: currentPassword }
+      : { password: nextPassword },
+  );
+
+  if (error) {
+    // GoTrue words this several ways depending on version; all of them mean
+    // the old password did not match, and that is worth saying plainly rather
+    // than passing through a message about credentials.
+    if (/current password|invalid.*credential|password.*incorrect/i.test(error.message)) {
+      throw new Error('That is not your current password.');
+    }
+    throw error;
+  }
 }
+
 
 export interface SubscriptionChange {
   status: string;

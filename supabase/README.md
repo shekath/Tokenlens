@@ -340,12 +340,29 @@ Supabase's own phone auth is a separate thing and is not enabled.
 
 ### Passwords
 
-The Password tab calls `supabase.auth.updateUser({ password })`. Where the
-account already has an email identity, the current password is required first
-and checked with `signInWithPassword` — a live session is not proof that the
-person at the keyboard is the account holder. An account created through Google
-has no password to produce, so the same form sets a first one, which is what
-makes the account reachable without Google afterwards.
+The Password tab calls `supabase.auth.updateUser({ password, current_password })`.
+A live session is not proof that the person at the keyboard is the account
+holder — a borrowed laptop has one — so an account that already has a password
+must produce it.
+
+The old password goes **to the server**, not through a check here. An earlier
+version called `signInWithPassword` to validate it and then called
+`updateUser`, which is check-then-act: anyone holding a session could skip to
+`updateUser` and change the password without knowing the old one, because the
+gate lived in the browser. It also minted a whole new session as a side effect
+of validating.
+
+Two settings on **Authentication → Providers → Email** back this up, and both
+are worth turning on:
+
+| Setting | Why |
+|---|---|
+| Require current password when changing password | Makes the paragraph above enforcement rather than a promise this form makes on its own |
+| Prevent use of leaked passwords | Checks against HaveIBeenPwned. **Pro plan and above** |
+
+An account created through Google has no password to produce, so the same form
+sets a first one — which is what makes the account reachable without Google
+afterwards.
 
 ### Account linking
 
