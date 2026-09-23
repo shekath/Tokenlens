@@ -29,7 +29,7 @@ import {
   titleCase,
 } from '../lib/billing';
 import type { Profile } from '../lib/subscription';
-import type { Tier } from '../lib/entitlements';
+import { listPrice, type Tier } from '../lib/entitlements';
 
 type Section = 'details' | 'password' | 'subscription';
 
@@ -396,6 +396,10 @@ function SubscriptionPanel({
   const end = profile.currentPeriodEnd ? new Date(profile.currentPeriodEnd) : null;
   const dated = end && Number.isFinite(end.getTime()) ? end : null;
   const amount = formatAmount(profile.amountCents, profile.currency);
+  // Until an invoice arrives there is no charged amount to show. The published
+  // price is the honest stand-in, as long as it is labelled as the published
+  // price and not as what this account was charged.
+  const listed = amount ? null : listPrice(profile.tier);
   const card = formatCard(profile.cardBrand, profile.cardLastFour);
 
   const run = async (action: 'cancel' | 'resume') => {
@@ -436,7 +440,10 @@ function SubscriptionPanel({
         </div>
         <div>
           <dt>Amount</dt>
-          <dd>{amount ?? 'Not recorded'}</dd>
+          <dd>
+            {amount ?? listed ?? 'Not recorded'}
+            {listed ? <span className="factlist__qualifier">list price</span> : null}
+          </dd>
         </div>
         {card ? (
           <div>
@@ -449,7 +456,9 @@ function SubscriptionPanel({
       <p className="muted" style={{ fontSize: 11, margin: 0 }}>
         {amount
           ? 'The amount is what Lemon Squeezy last charged, tax included. It is the merchant of record and issues the receipts.'
-          : 'No invoice has been recorded against this subscription yet. Lemon Squeezy has the receipts either way — it is the merchant of record.'}
+          : listed
+            ? 'No invoice has reached us for this subscription yet, so this is the published price rather than what you were charged — tax, currency and any discount can move it. Your receipts are with Lemon Squeezy, the merchant of record, and the exact figure appears here after the next payment.'
+            : 'No invoice has been recorded against this subscription yet. Lemon Squeezy has the receipts either way — it is the merchant of record.'}
       </p>
 
       <button

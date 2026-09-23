@@ -188,6 +188,28 @@ export const PLANS: Plan[] = [
   },
 ];
 
+/**
+ * What we advertise this tier at, for the gap before an invoice exists.
+ *
+ * "Amount: Not recorded" is accurate - no invoice has arrived - but in an
+ * account page it reads as a broken field rather than as a fact, and a
+ * customer who is being billed sees nothing about what they pay.
+ *
+ * This is emphatically NOT the charged amount, and must never be labelled as
+ * one. A coupon, a currency other than the store's, a proration or tax all
+ * move the real figure, which is why the webhook records what Lemon Squeezy
+ * actually took rather than what we list. The interval is not guessed either:
+ * when a tier sells at two prices, both are shown, because "next renewal:
+ * $12/month" would be a specific and possibly wrong claim about a customer who
+ * holds the annual price.
+ */
+export function listPrice(tier: Tier): string | null {
+  const plan = PLANS.find((p) => p.tier === tier);
+  if (!plan || plan.monthly === 0) return null;
+  const monthly = `$${plan.monthly}/month`;
+  return plan.annual === null ? monthly : `${monthly} or $${plan.annual}/year`;
+}
+
 /** Rows for the comparison table on the pricing page. */
 export const COMPARISON: Array<{ label: string; free: string; pro: string; team: string }> = [
   {

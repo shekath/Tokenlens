@@ -171,3 +171,25 @@ test('a real variant name is used as given', async () => {
   assert.equal(planLabel('Pro Monthly', 'pro'), 'Pro Monthly');
   assert.equal(planLabel('Team Annual (Default rate)', 'team'), 'Team Annual (Default rate)');
 });
+
+// ------------------------------------------------------- the list price ----
+
+test('the published price stands in only where there is no charged amount', async () => {
+  const { PLANS, listPrice } = await import('../src/lib/entitlements.ts');
+
+  // Read from PLANS rather than retyped, so a price change cannot leave the
+  // account page quoting last quarter's number.
+  const team = PLANS.find((p) => p.tier === 'team');
+  const pro = PLANS.find((p) => p.tier === 'pro');
+
+  assert.equal(listPrice('team'), `$${team.monthly}/month`);
+
+  // Pro sells at two prices and we do not record which one an account holds,
+  // so naming one would be a specific claim that is wrong half the time.
+  const proText = listPrice('pro');
+  assert.ok(proText.includes(`$${pro.monthly}/month`), proText);
+  assert.ok(proText.includes(`$${pro.annual}/year`), proText);
+
+  // Free has no price to publish, so there is nothing to stand in with.
+  assert.equal(listPrice('free'), null);
+});

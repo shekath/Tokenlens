@@ -1631,6 +1631,22 @@ table.data tbody tr.is-on td:first-child {
   text-align: right;
 }
 
+/* Marks a figure that is the published price rather than a charged amount.
+   It has to read as a qualifier on the number, not as part of it. */
+.factlist__qualifier {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  vertical-align: 1px;
+}
+
 /* ============================================== reference pages ========== */
 
 .navlinks {
