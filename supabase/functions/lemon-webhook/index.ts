@@ -70,15 +70,38 @@ serve(async (req: Request): Promise<Response> => {
   const subscriptionId = String(payload?.data?.id ?? '');
   const eventId = await eventIdFor(eventName, subscriptionId, rawBody);
 
-  const decision = decide(
-    payload,
-    parseVariantMap(Deno.env.get('LEMON_PRO_VARIANT_IDS'), Deno.env.get('LEMON_TEAM_VARIANT_IDS')),
+  const variants = parseVariantMap(
+    Deno.env.get('LEMON_PRO_VARIANT_IDS'),
+    Deno.env.get('LEMON_TEAM_VARIANT_IDS'),
   );
+
+  const decision = decide(payload, variants);
 
   if (decision.kind === 'reject') {
     // Nothing is claimed in the ledger: a retry must be able to do real work
     // once the cause is fixed, rather than short-circuit as a duplicate.
-    console.error('Refusing event', { eventId, eventName, why: decision.why });
+    //
+    // "variant X is in neither list" is unanswerable from outside without
+    // knowing what the lists actually hold, and that cost a morning: the
+    // secret was corrected, the event was resent, and the refusal came back
+    // word for word with no way to tell whether the function was reading a
+    // stale value, an empty one, or a correct one that simply lacked the id.
+    //
+    // So log the parsed lists. Variant ids are not secret - they are in the
+    // public checkout URL every customer sees - and the difference between
+    // [] and ['2152674'] is the whole diagnosis: empty means the secret is
+    // missing or misnamed, populated-but-wrong means the ids are.
+    // Environment values are never logged, only the LEMON_ key names.
+    console.error('Refusing event', {
+      eventId,
+      eventName,
+      why: decision.why,
+      proVariants: variants.pro,
+      teamVariants: variants.team,
+      lemonKeysVisible: Object.keys(Deno.env.toObject())
+        .filter((k) => k.startsWith('LEMON_'))
+        .sort(),
+    });
     return new Response(decision.why, { status: decision.status });
   }
 
