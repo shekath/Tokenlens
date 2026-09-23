@@ -86,6 +86,9 @@ serve(async (req: Request): Promise<Response> => {
     // secret was corrected, the event was resent, and the refusal came back
     // word for word with no way to tell whether the function was reading a
     // stale value, an empty one, or a correct one that simply lacked the id.
+    // It turned out the KEY was named "LEMON_PRO_VARIANT_IDS," - a comma had
+    // landed in the name - which no amount of staring at the old message
+    // could have revealed.
     //
     // So log the parsed lists. Variant ids are not secret - they are in the
     // public checkout URL every customer sees - and the difference between
@@ -153,8 +156,24 @@ serve(async (req: Request): Promise<Response> => {
       // These events name no account, so there is nothing to create from. A
       // miss means this deployment has never seen the subscription - one that
       // belongs to another environment sharing the store, or one refused at
-      // creation. Retrying cannot make it match, so acknowledge it and say so.
+      // creation. Retrying on a timer cannot make it match, so answer 200 and
+      // let Lemon Squeezy stop.
+      //
+      // But release the ledger claim on the way out. The claim exists to stop
+      // one delivery being APPLIED twice, and nothing was applied here. Left
+      // in place it silently makes the event unreplayable: a later resend,
+      // once the cause is fixed, hashes to the same id, is dismissed as a
+      // duplicate and returns 200 having done nothing.
+      //
+      // That is not hypothetical. Three subscription_payment_success events
+      // were acknowledged this way while their subscription was refused at
+      // creation over a misnamed secret. When the secret was fixed and the
+      // creation event replayed, the account provisioned correctly - and the
+      // amounts stayed null, because those three could no longer be replayed
+      // at all. The refusal path above never claims, for exactly this reason;
+      // this path should not have either.
       if (!data || data.length === 0) {
+        await supabase.from('billing_events').delete().eq('event_id', eventId);
         console.warn('Event for an untracked subscription', {
           eventId,
           eventName,
