@@ -240,6 +240,11 @@ export function useSubscription(user: User | null): SubscriptionState {
         base: checkoutBase,
         variantFor: variantId,
         profile,
+        // Built from BASE_URL rather than the current href so it is the same
+        // destination whichever page the upgrade was started from - and so a
+        // hash route (#/docs) does not send the customer back to the docs
+        // instead of the dashboard they just paid to unlock.
+        returnTo: window.location.origin + import.meta.env.BASE_URL,
       });
 
       if (!target.ok) {

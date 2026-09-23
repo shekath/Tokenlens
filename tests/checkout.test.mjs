@@ -239,3 +239,55 @@ test('a browser that refuses to clear opener still gets its tab', () => {
     }),
   );
 });
+
+// ------------------------------------------------- returning to the app ----
+
+test('the checkout carries a success_url back to the app', () => {
+  const t = checkoutTarget({
+    plan: pro,
+    period: 'monthly',
+    base: BASE,
+    variantFor: (k) => ids[k] ?? null,
+    profile: PROFILE,
+    returnTo: 'https://shekath.github.io/Tokenlens/',
+  });
+  assert.equal(t.ok, true);
+  const q = new URL(t.url).searchParams;
+  // Without this the customer stops on Lemon Squeezy's confirmation page. It
+  // matters most when a popup blocker sent THIS tab to the checkout, because
+  // then there is no tab waiting behind it.
+  assert.equal(q.get('checkout[success_url]'), 'https://shekath.github.io/Tokenlens/');
+  // The parameters that were already load-bearing are untouched.
+  assert.equal(q.get('checkout[custom][user_id]'), PROFILE.id);
+  assert.equal(q.get('checkout[email]'), PROFILE.email);
+});
+
+test('a return url that Lemon Squeezy cannot use is dropped, not passed on', () => {
+  // The customer is holding a card. A malformed redirect is not worth failing
+  // a purchase over - the worst case without it is the behaviour we already
+  // had, so every one of these still produces a working checkout.
+  for (const bad of ['', '   ', 'not a url', '/Tokenlens/', 'javascript:alert(1)', null, undefined]) {
+    const t = checkoutTarget({
+      plan: pro,
+      period: 'monthly',
+      base: BASE,
+      variantFor: (k) => ids[k] ?? null,
+      profile: PROFILE,
+      returnTo: bad,
+    });
+    assert.equal(t.ok, true, `returnTo ${JSON.stringify(bad)} must still open a checkout`);
+    assert.equal(
+      new URL(t.url).searchParams.get('checkout[success_url]'),
+      null,
+      `returnTo ${JSON.stringify(bad)} must not reach Lemon Squeezy`,
+    );
+  }
+});
+
+test('omitting returnTo entirely leaves the checkout exactly as it was', () => {
+  const withOut = checkoutTarget({
+    plan: team, period: 'monthly', base: BASE, variantFor: (k) => ids[k] ?? null, profile: PROFILE,
+  });
+  assert.equal(withOut.ok, true);
+  assert.ok(!withOut.url.includes('success_url'));
+});
