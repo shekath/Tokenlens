@@ -30,6 +30,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { runDeletion } from './plan.ts';
 
 const API = 'https://api.lemonsqueezy.com/v1';
 
@@ -137,70 +138,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'Could not check your subscriptions. Nothing was deleted.' }, 500);
   }
 
-  // 'cancelled' is already set not to renew, and asking Lemon Squeezy to
-  // cancel it again is an error rather than a no-op. 'inactive' has stopped.
-  const billing = (subs ?? []).filter((s) =>
-    ['active', 'trialing', 'past_due'].includes(String(s.status)),
-  );
+  // The order, the stop-on-failure rule and every message live in plan.ts,
+  // where tests/deleteAccountPlan.test.mjs can run them on demand. They cannot
+  // be exercised from here: each real deletion destroys its own subject, and
+  // the branch that matters most needs Lemon Squeezy to refuse on cue.
+  const outcome = await runDeletion(subs ?? [], {
+    cancel: cancelAtLemon,
+    clearLedger: async () => {
+      // Keyed by event rather than by user, so it does not cascade. Each
+      // payload holds the buyer's email and name.
+      const { error } = await admin
+        .from('billing_events')
+        .delete()
+        .filter('payload->meta->custom_data->>user_id', 'eq', userId);
+      if (error) throw error;
+    },
+    deleteUser: async () => {
+      const { error } = await admin.auth.admin.deleteUser(userId);
+      if (error) throw error;
+    },
+  });
 
-  const cancelled: string[] = [];
-  for (const sub of billing) {
-    const id = String(sub.lemon_subscription_id);
-    try {
-      await cancelAtLemon(id);
-      cancelled.push(id);
-    } catch (err) {
-      // Stop here, with the account intact. A half-deleted account that is
-      // still being billed is worse than one that is not deleted yet.
-      console.error('Aborting account deletion: a subscription would keep billing', {
-        userId,
-        subscriptionId: id,
-        err,
-      });
-      return json(
-        {
-          error:
-            `Your subscription could not be cancelled, so nothing was deleted - ` +
-            `otherwise you would keep being charged. Try again, or cancel it from ` +
-            `the billing portal first. (${err instanceof Error ? err.message : 'unknown error'})`,
-        },
-        502,
-      );
-    }
-  }
-
-  // The ledger is keyed by event, not by user, so it does not cascade. Its
-  // payloads carry the buyer's email and name.
-  const { error: ledgerError } = await admin
-    .from('billing_events')
-    .delete()
-    .filter('payload->meta->custom_data->>user_id', 'eq', userId);
-
-  if (ledgerError) {
-    // Not fatal: the account still goes, and what is left is an event log with
-    // no account behind it. Worth knowing about, not worth stranding the user.
-    console.error('Could not clear billing events for a deleted account', {
+  if (!outcome.ok) {
+    console.error('Account deletion did not complete', {
       userId,
-      ledgerError,
+      stage: outcome.stage,
+      cancelled: outcome.cancelled,
     });
+    return json({ error: outcome.message }, outcome.stage === 'cancel' ? 502 : 500);
   }
 
-  // Everything of theirs cascades from here: profiles, and from profiles the
-  // saved estimates and subscription rows.
-  const { error: deleteError } = await admin.auth.admin.deleteUser(userId);
-  if (deleteError) {
-    console.error('Could not delete the account', { userId, deleteError });
-    return json(
-      {
-        error:
-          cancelled.length > 0
-            ? `Your subscription was cancelled but the account could not be deleted. ` +
-              `Contact support before signing up again.`
-            : 'Your account could not be deleted. Nothing was changed.',
-      },
-      500,
-    );
-  }
+  const cancelled = outcome.cancelled;
 
   console.log('Account deleted', { userId, cancelledSubscriptions: cancelled });
   return json({ deleted: true, cancelledSubscriptions: cancelled });
