@@ -92,7 +92,7 @@ export function supportMailto(
    * because this module is imported directly by the node test suite, which has
    * no Vite env - the same reason checkoutTarget takes its return URL.
    */
-  to: string | undefined= import.meta.env.VITE_SUPPORT_EMAIL
+  to: string | undefined,
 ): string | null {
   const address = (to ?? '').trim();
   if (!address) return null;

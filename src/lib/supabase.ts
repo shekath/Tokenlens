@@ -58,6 +58,29 @@ type EstimateRow = {
   created_at: string;
 };
 
+/**
+ * A support request, as migration 0010 stores it.
+ *
+ * A `type` and not an `interface`, like every row type here, and that is not a
+ * style choice. TypeScript gives a type alias an implicit index signature and
+ * an interface none, so an interface fails supabase-js's
+ * `Row extends Record<string, unknown>` constraint - silently, collapsing
+ * every row type in the schema to `never` and producing errors only in the
+ * files that read the OTHER tables. Same trap the Functions block below warns
+ * about, reached from a different direction.
+ */
+type SupportTicketRow = {
+  id: string;
+  user_id: string;
+  subject: string;
+  message: string;
+  tier: Tier;
+  public_id: string;
+  context: Record<string, unknown>;
+  status: 'open' | 'answered' | 'closed';
+  created_at: string;
+};
+
 type SharedEstimateRow = {
   share_slug: string;
   project_title: string;
@@ -94,6 +117,19 @@ export interface Database {
         Insert: Omit<EstimateRow, 'id' | 'created_at' | 'share_slug'> &
           Partial<Pick<EstimateRow, 'id' | 'created_at' | 'share_slug'>>;
         Update: Partial<Pick<EstimateRow, 'project_title' | 'is_public'>>;
+        Relationships: [];
+      };
+      support_tickets: {
+        Row: SupportTicketRow;
+        // Inserts go through the submit-ticket Edge Function, which runs as
+        // the caller so the row-level policies - including the daily cap -
+        // still apply. UPDATE and DELETE are revoked from authenticated in
+        // migration 0010: a ticket the sender can rewrite afterwards is not a
+        // record of anything. The grants are the enforcement; this only
+        // describes the shape.
+        Insert: Omit<SupportTicketRow, 'id' | 'created_at' | 'status'> &
+          Partial<Pick<SupportTicketRow, 'id' | 'created_at' | 'status'>>;
+        Update: Partial<Pick<SupportTicketRow, 'status'>>;
         Relationships: [];
       };
     };

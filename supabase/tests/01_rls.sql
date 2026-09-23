@@ -814,5 +814,100 @@ end $$;
 
 delete from public.subscriptions where lemon_subscription_id like 'shape-probe%';
 
+select test_reset();
+
+\echo ''
+\echo '== support requests belong to the sender, and are rate limited =='
+
+select test_as_user('11111111-1111-1111-1111-111111111111');
+
+-- A ticket is filed by the Edge Function running AS the caller, so everything
+-- below is what the browser could do directly. That is the point: the function
+-- holds no power the policies do not already grant.
+insert into public.support_tickets (user_id, subject, message, tier, public_id)
+values ('11111111-1111-1111-1111-111111111111', 'First', 'A message long enough to pass.', 'free', 'TT-AAA');
+
+select assert(
+  (select count(*) from public.support_tickets) = 1,
+  'a signed-in user can raise a request'
+);
+
+-- Somebody else's account id, from their own session.
+do $$
+declare
+  refused boolean := false;
+begin
+  begin
+    insert into public.support_tickets (user_id, subject, message, tier, public_id)
+    values ('22222222-2222-2222-2222-222222222222', 'Theirs', 'Filed against another account.', 'free', 'TT-BBB');
+  exception
+    when insufficient_privilege or check_violation then refused := true;
+  end;
+  perform assert(refused, 'a request cannot be filed against somebody else''s account');
+end $$;
+
+select test_as_user('22222222-2222-2222-2222-222222222222');
+select assert(
+  (select count(*) from public.support_tickets) = 0,
+  'and one account cannot read another''s requests'
+);
+
+-- The daily cap. It lives in the policy rather than a handler because a policy
+-- cannot be forgotten, bypassed by a second caller, or raced.
+select test_as_user('11111111-1111-1111-1111-111111111111');
+insert into public.support_tickets (user_id, subject, message, tier, public_id)
+select '11111111-1111-1111-1111-111111111111', 'Number ' || n, 'Another message long enough.', 'free', 'TT-AAA'
+  from generate_series(2, 5) as n;
+
+select assert(
+  (select count(*) from public.support_tickets) = 5,
+  'five in a day is allowed'
+);
+
+do $$
+declare
+  refused boolean := false;
+begin
+  begin
+    insert into public.support_tickets (user_id, subject, message, tier, public_id)
+    values ('11111111-1111-1111-1111-111111111111', 'Sixth', 'One past the daily cap.', 'free', 'TT-AAA');
+  exception
+    when insufficient_privilege then refused := true;
+  end;
+  perform assert(refused, 'and the sixth is refused by the policy, not by a handler');
+end $$;
+
+-- A ticket the sender can rewrite afterwards is not a record of anything.
+select assert(
+  not has_table_privilege('authenticated', 'public.support_tickets', 'UPDATE')
+    and not has_table_privilege('authenticated', 'public.support_tickets', 'DELETE'),
+  'nobody updates or deletes a ticket from the client'
+);
+
+-- The CHECK constraints are what the form mirrors; if they drift the form
+-- accepts messages Postgres will not. As the second user, who has not hit the
+-- cap - otherwise the policy refuses these before a CHECK is ever reached, and
+-- the test would pass for the wrong reason.
+select test_as_user('22222222-2222-2222-2222-222222222222');
+
+do $$
+declare
+  refused integer := 0;
+begin
+  begin
+    insert into public.support_tickets (user_id, subject, message, tier, public_id)
+    values ('22222222-2222-2222-2222-222222222222', '  ', 'A long enough message here.', 'free', 'TT-BBB');
+  exception when check_violation then refused := refused + 1;
+  end;
+  begin
+    insert into public.support_tickets (user_id, subject, message, tier, public_id)
+    values ('22222222-2222-2222-2222-222222222222', 'Fine subject', 'short', 'free', 'TT-BBB');
+  exception when check_violation then refused := refused + 1;
+  end;
+  perform assert(refused = 2, 'a blank subject and a too-short message are both refused');
+end $$;
+
+select test_reset();
+
 \echo ''
 \echo 'All RLS assertions passed.'

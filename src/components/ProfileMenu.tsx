@@ -30,11 +30,18 @@ import {
   titleCase,
 } from '../lib/billing';
 import { DELETE_PHRASE, deleteConfirmed } from '../lib/deleteAccount';
-import { useSupportLink } from '../lib/useSupportLink';
+import { browserContext } from '../lib/support';
+import {
+  MESSAGE_MAX,
+  listTickets,
+  submitTicket,
+  ticketProblem,
+  type Ticket,
+} from '../lib/tickets';
 import type { Profile } from '../lib/subscription';
 import { listPrice, type Tier } from '../lib/entitlements';
 
-type Section = 'details' | 'password' | 'subscription' | 'delete';
+type Section = 'details' | 'password' | 'subscription' | 'support' | 'delete';
 
 /**
  * Where the dropdown goes. The arithmetic, and why the old rule was wrong, is
@@ -107,7 +114,6 @@ export function ProfileMenu({
   const panelLeft = usePanelOffset(open, wrap, panel);
 
   const email = profile?.email ?? user.email ?? '';
-  const supportHref = useSupportLink(profile, email);
   const name = greetingName({
     displayName: profile?.displayName,
     fullName: profile?.fullName,
@@ -225,16 +231,18 @@ export function ProfileMenu({
           {/* An anchor, not a button: a mail client is a navigation, and this
               way the address is visible on hover and copyable on right-click
               for anyone whose machine has no mail client configured. */}
-          {supportHref ? (
-            <a
-              role="menuitem"
-              className="pmenu__item"
-              href={supportHref}
-              onClick={() => setOpen(false)}
-            >
-              Contact support
-            </a>
-          ) : null}
+          {/* Signed in, so the in-app form is reachable and records the request
+              where both sides can see it. The mailto stays in the footer for
+              people who are not signed in - which includes anyone who cannot
+              sign in, the one case a form behind sign-in cannot serve. */}
+          <button
+            type="button"
+            role="menuitem"
+            className="pmenu__item"
+            onClick={() => openSection('support')}
+          >
+            Contact support
+          </button>
 
           <div className="pmenu__sep" role="separator" />
 
@@ -369,8 +377,8 @@ function ProfileDialog({
   // 'delete' is always last: it is the one panel here that cannot be undone,
   // and the tab order is the only ranking a segmented control has.
   const sections: Section[] = profile?.hasSubscription
-    ? ['details', 'password', 'subscription', 'delete']
-    : ['details', 'password', 'delete'];
+    ? ['details', 'password', 'subscription', 'support', 'delete']
+    : ['details', 'password', 'support', 'delete'];
 
   useEffect(() => {
     if (!sections.includes(tab)) setTab('details');
@@ -394,7 +402,9 @@ function ProfileDialog({
                 ? 'Password'
                 : t === 'subscription'
                   ? 'Subscription'
-                  : 'Delete'}
+                  : t === 'support'
+                    ? 'Support'
+                    : 'Delete'}
           </button>
         ))}
       </div>
@@ -405,6 +415,8 @@ function ProfileDialog({
         <PasswordForm user={user} />
       ) : tab === 'subscription' ? (
         <SubscriptionPanel profile={profile} onChanged={onSaved} />
+      ) : tab === 'support' ? (
+        <SupportPanel profile={profile} email={email} />
       ) : (
         <DeletePanel profile={profile} email={email} />
       )}
@@ -930,5 +942,168 @@ function DeletePanel({ profile, email }: { profile: Profile | null; email: strin
 
       {error ? <p className="notice notice--error">{error}</p> : null}
     </form>
+  );
+}
+
+/**
+ * Raising a support request, and seeing the ones already raised.
+ *
+ * This exists because a mailto: does nothing at all on a machine with no mail
+ * client configured - a Chromebook, a locked-down work laptop, anyone living
+ * in webmail. The click appears to work and no message is ever sent, and
+ * neither side finds out. A row in a table cannot fail that way, and the list
+ * below it is the part a mailto can never offer: proof it was sent.
+ *
+ * The context block is shown, not hidden. Nothing is attached that the sender
+ * could not read off their own account page, and showing it is the difference
+ * between diagnostics and telemetry.
+ */
+function SupportPanel({ profile, email }: { profile: Profile | null; email: string }) {
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ quiet: boolean } | null>(null);
+  const [past, setPast] = useState<Ticket[] | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    listTickets()
+      .then((rows) => live && setPast(rows))
+      // A failure to list past requests must not stop someone raising a new
+      // one - that would turn a cosmetic problem into an unreachable support
+      // channel.
+      .catch(() => live && setPast([]));
+    return () => {
+      live = false;
+    };
+  }, [sent]);
+
+  const context = { build: typeof __APP_BUILD__ === 'string' ? __APP_BUILD__ : 'unknown', ...browserContext() };
+  const problem = ticketProblem(subject, message);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setBusy(true);
+    try {
+      const { notified } = await submitTicket({
+        subject,
+        message,
+        tier: profile?.tier ?? 'free',
+        publicId: profile?.publicId ?? '',
+        context,
+      });
+      setSubject('');
+      setMessage('');
+      setSent({ quiet: !notified });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send your request.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="stack" style={{ marginTop: 16 }}>
+      {sent ? (
+        <p className={sent.quiet ? 'notice' : 'notice notice--ok'}>
+          {sent.quiet
+            ? 'Recorded — but the notification did not go out, so chase us if it stays quiet. ' +
+              'Your request is listed below either way.'
+            : 'Sent. We reply by email, usually within a working day.'}
+        </p>
+      ) : null}
+
+      <form onSubmit={submit} className="stack">
+        <div className="field">
+          <label className="field__label" htmlFor="ticket-subject">
+            Subject
+          </label>
+          <input
+            id="ticket-subject"
+            className="input"
+            value={subject}
+            maxLength={200}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Batch upload fails"
+          />
+        </div>
+
+        <div className="field">
+          <label className="field__label" htmlFor="ticket-message">
+            What happened
+          </label>
+          <textarea
+            id="ticket-message"
+            className="input"
+            rows={5}
+            maxLength={MESSAGE_MAX}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="What you did, what you expected, and what happened instead."
+            style={{ resize: 'vertical', padding: '8px 9px', minHeight: 96 }}
+          />
+          <span className="muted" style={{ fontSize: 11 }}>
+            {message.trim().length.toLocaleString()} / {MESSAGE_MAX.toLocaleString()}
+          </span>
+        </div>
+
+        <details className="ticketcontext">
+          <summary>What is sent with it</summary>
+          <dl className="factlist" style={{ marginTop: 8 }}>
+            <div>
+              <dt>Account</dt>
+              <dd>{profile?.publicId ?? '—'}</dd>
+            </div>
+            <div>
+              <dt>Plan</dt>
+              <dd>{profile?.tier ?? 'free'}</dd>
+            </div>
+            <div>
+              <dt>Email</dt>
+              <dd>{email}</dd>
+            </div>
+            <div>
+              <dt>Build</dt>
+              <dd>{context.build}</dd>
+            </div>
+            <div>
+              <dt>Viewport</dt>
+              <dd>{context.viewport}</dd>
+            </div>
+          </dl>
+          <p className="muted" style={{ fontSize: 11, margin: '8px 0 0' }}>
+            Nothing here that is not already on your account page. Your prompts are not
+            included — they never leave this browser.
+          </p>
+        </details>
+
+        <button type="submit" className="btn" disabled={busy || problem !== null}>
+          {busy ? 'Sending…' : 'Send request'}
+        </button>
+
+        {error ? <p className="notice notice--error">{error}</p> : null}
+      </form>
+
+      {past && past.length > 0 ? (
+        <section className="stack" style={{ marginTop: 8 }}>
+          <h3 className="card__title">Your requests</h3>
+          <ul className="ticketlist">
+            {past.map((t) => (
+              <li key={t.id}>
+                <span className={`ticketlist__status is-${t.status}`}>{t.status}</span>
+                <span className="ticketlist__subject">{t.subject}</span>
+                <span className="ticketlist__date">{formatBillingDate(new Date(t.createdAt))}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   );
 }
