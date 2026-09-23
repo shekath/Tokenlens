@@ -1573,7 +1573,6 @@ table.data tbody tr.is-on td:first-child {
 
 .ticketlist__status {
   flex: none;
-  min-width: 62px;
   font-size: 10px;
   font-weight: 650;
   letter-spacing: 0.03em;
@@ -1587,6 +1586,7 @@ table.data tbody tr.is-on td:first-child {
 
 .ticketlist__subject {
   flex: 1 1 auto;
+  order: -1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -1096,12 +1096,23 @@ function SupportPanel({ profile, email }: { profile: Profile | null; email: stri
           <ul className="ticketlist">
             {past.map((t) => (
               <li key={t.id}>
-                <span className={`ticketlist__status is-${t.status}`}>{t.status}</span>
                 <span className="ticketlist__subject">{t.subject}</span>
+                {/* Only shown once something has actually moved it off 'open'.
+                    Nothing writes this column yet - the helpdesk is reached by
+                    email and does not report back - so a badge on every row
+                    would say "open" forever and mean nothing. No badge is the
+                    honest rendering of "no update yet"; a badge appears the day
+                    a status really is set. */}
+                {t.status !== 'open' ? (
+                  <span className={`ticketlist__status is-${t.status}`}>{t.status}</span>
+                ) : null}
                 <span className="ticketlist__date">{formatBillingDate(new Date(t.createdAt))}</span>
               </li>
             ))}
           </ul>
+          <p className="muted" style={{ fontSize: 11, margin: 0 }}>
+            We reply by email, to {email}. This list is what you have sent us.
+          </p>
         </section>
       ) : null}
     </div>
