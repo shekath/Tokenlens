@@ -30,6 +30,7 @@ import {
   titleCase,
 } from '../lib/billing';
 import { DELETE_PHRASE, deleteConfirmed } from '../lib/deleteAccount';
+import { useSupportLink } from '../lib/useSupportLink';
 import type { Profile } from '../lib/subscription';
 import { listPrice, type Tier } from '../lib/entitlements';
 
@@ -106,6 +107,7 @@ export function ProfileMenu({
   const panelLeft = usePanelOffset(open, wrap, panel);
 
   const email = profile?.email ?? user.email ?? '';
+  const supportHref = useSupportLink(profile, email);
   const name = greetingName({
     displayName: profile?.displayName,
     fullName: profile?.fullName,
@@ -219,6 +221,20 @@ export function ProfileMenu({
           >
             Plans and billing
           </button>
+
+          {/* An anchor, not a button: a mail client is a navigation, and this
+              way the address is visible on hover and copyable on right-click
+              for anyone whose machine has no mail client configured. */}
+          {supportHref ? (
+            <a
+              role="menuitem"
+              className="pmenu__item"
+              href={supportHref}
+              onClick={() => setOpen(false)}
+            >
+              Contact support
+            </a>
+          ) : null}
 
           <div className="pmenu__sep" role="separator" />
 

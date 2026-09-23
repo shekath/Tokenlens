@@ -647,7 +647,13 @@ export default function App() {
 
       </main>
 
-      <SiteFooter route={route} onNavigate={goTo} onPricing={openPricing} />
+      <SiteFooter
+        route={route}
+        onNavigate={goTo}
+        onPricing={openPricing}
+        profile={sub.profile}
+        email={auth.user?.email ?? null}
+      />
 
       <AuthDialog
         open={authOpen}

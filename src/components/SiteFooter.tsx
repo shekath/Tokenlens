@@ -9,16 +9,28 @@
 
 import { PRICING_AS_OF } from '../lib/models';
 import { NAV, type Route } from '../lib/useHashRoute';
+import { useSupportLink } from '../lib/useSupportLink';
+import type { Profile } from '../lib/subscription';
 
 export function SiteFooter({
   route,
   onNavigate,
   onPricing,
+  profile,
+  email,
 }: {
   route: Route;
   onNavigate: (route: Route) => void;
   onPricing: () => void;
+  /** Null when signed out - the link still works, with less to say. */
+  profile: Profile | null;
+  email: string | null;
 }) {
+  // The footer is the only support route for someone who is not signed in and
+  // therefore has no profile menu. That is most people with a sign-in problem,
+  // which is the one bug report you cannot afford to make hard to send.
+  const supportHref = useSupportLink(profile, email);
+
   return (
     <footer className="footer">
       <div className="footer__inner">
@@ -47,6 +59,11 @@ export function SiteFooter({
           <button type="button" className="linkish" onClick={onPricing}>
             Plans and pricing
           </button>
+          {supportHref ? (
+            <a className="linkish" href={supportHref}>
+              Contact support
+            </a>
+          ) : null}
         </nav>
       </div>
     </footer>

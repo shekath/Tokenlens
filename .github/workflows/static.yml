@@ -52,6 +52,9 @@ jobs:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           VITE_LEMON_CHECKOUT_URL: ${{ vars.VITE_LEMON_CHECKOUT_URL }}
+          # Public address; a repository Variable, not a Secret. Unset means the
+          # Contact support links do not render at all - see lib/support.ts.
+          VITE_SUPPORT_EMAIL: ${{ vars.VITE_SUPPORT_EMAIL }}
           VITE_LEMON_VARIANT_PRO_MONTHLY: ${{ vars.VITE_LEMON_VARIANT_PRO_MONTHLY }}
           VITE_LEMON_VARIANT_PRO_ANNUAL: ${{ vars.VITE_LEMON_VARIANT_PRO_ANNUAL }}
           VITE_LEMON_VARIANT_TEAM_MONTHLY: ${{ vars.VITE_LEMON_VARIANT_TEAM_MONTHLY }}
