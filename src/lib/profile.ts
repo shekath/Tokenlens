@@ -174,3 +174,31 @@ export async function billingPortalUrl(): Promise<string> {
   if (!data?.url) throw new Error(data?.error ?? 'No billing portal link was returned.');
   return data.url;
 }
+
+/**
+ * Deletes the caller's account, permanently.
+ *
+ * Sends no user id - the Edge Function reads it from the verified token, so
+ * nothing here can name somebody else's account. The confirmation word goes
+ * with it and is checked again server-side: the interface already refuses to
+ * enable the button without it, but an interface is not a guard.
+ *
+ * Returns the subscriptions that were cancelled on the way, so the caller can
+ * say what happened rather than guess.
+ */
+export async function deleteAccount(confirm: string): Promise<{ cancelledSubscriptions: string[] }> {
+  const { data, error } = await client().functions.invoke<{
+    deleted?: boolean;
+    cancelledSubscriptions?: string[];
+    error?: string;
+  }>('delete-account', { body: { confirm } });
+
+  if (error) {
+    const detail = await readFunctionError(error);
+    throw new Error(detail ?? 'Could not reach the account service. Nothing was deleted.');
+  }
+  if (!data?.deleted) {
+    throw new Error(data?.error ?? 'The account was not deleted.');
+  }
+  return { cancelledSubscriptions: data.cancelledSubscriptions ?? [] };
+}

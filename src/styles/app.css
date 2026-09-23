@@ -1521,6 +1521,85 @@ table.data tbody tr.is-on td:first-child {
   color: var(--text-secondary);
 }
 
+/* The one irreversible item in the menu. Coloured, but not shouting: it should
+   be findable when wanted and unmistakable when hovered, not a red bar drawing
+   the eye every time the menu opens. */
+.pmenu__item--danger {
+  color: var(--critical);
+}
+
+.pmenu__item--danger:hover {
+  background: color-mix(in srgb, var(--critical) 10%, transparent);
+}
+
+/* --- destructive panel ------------------------------------------------- */
+
+.danger {
+  border: 1px solid color-mix(in srgb, var(--critical) 45%, transparent);
+  background: color-mix(in srgb, var(--critical) 7%, transparent);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.danger__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--critical);
+}
+
+.danger__text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.btn--danger {
+  background: var(--critical);
+  border-color: var(--critical);
+  color: #fff;
+  font-weight: 550;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--critical) 85%, #000);
+}
+
+/* Disabled until the word is typed, and it has to LOOK disabled - a button
+   that reads as pressable but does nothing is read as a bug, and people click
+   it harder rather than reading why.
+   Neutral rather than a faded red: white-on-pink was the first attempt and its
+   label was barely legible in the light theme, which makes the one control
+   that explains what is blocking you the hardest thing on the panel to read. */
+.btn--danger:disabled {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* The instruction belongs with the warning, not under the input: it has to be
+   read before the field is reached, and .field__label upper-cases its contents,
+   which turns the literal word to type into TYPE DELETE and loses the code
+   styling that marks it as a literal. */
+.danger__prompt {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.danger__prompt code {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--critical) 14%, transparent);
+}
+
 /* The support reference. Monospaced and tabular so it can be read out a
    character at a time, which is how it will actually be used. */
 .accountId {

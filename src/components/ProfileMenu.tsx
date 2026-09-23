@@ -5,6 +5,7 @@ import { countryOptions } from '../lib/countries';
 import {
   billingPortalUrl,
   changeSubscription,
+  deleteAccount,
   hasPassword,
   saveProfile,
   setPassword,
@@ -28,10 +29,11 @@ import {
   statusLabel,
   titleCase,
 } from '../lib/billing';
+import { DELETE_PHRASE, deleteConfirmed } from '../lib/deleteAccount';
 import type { Profile } from '../lib/subscription';
 import { listPrice, type Tier } from '../lib/entitlements';
 
-type Section = 'details' | 'password' | 'subscription';
+type Section = 'details' | 'password' | 'subscription' | 'delete';
 
 /**
  * Where the dropdown goes. The arithmetic, and why the old rule was wrong, is
@@ -231,6 +233,20 @@ export function ProfileMenu({
           >
             Sign out
           </button>
+
+          {/* Last, behind its own rule, and the only item in the menu that is
+              not reversible. Nothing here should sit next to Sign out by
+              accident: the two are one careless click apart otherwise. */}
+          <div className="pmenu__sep" role="separator" />
+
+          <button
+            type="button"
+            role="menuitem"
+            className="pmenu__item pmenu__item--danger"
+            onClick={() => openSection('delete')}
+          >
+            Delete account
+          </button>
         </div>
       ) : null}
 
@@ -334,9 +350,11 @@ function ProfileDialog({
 
   // No Subscription tab on an account that has never had one: an empty panel
   // explaining that there is nothing to manage is worse than no tab.
+  // 'delete' is always last: it is the one panel here that cannot be undone,
+  // and the tab order is the only ranking a segmented control has.
   const sections: Section[] = profile?.hasSubscription
-    ? ['details', 'password', 'subscription']
-    : ['details', 'password'];
+    ? ['details', 'password', 'subscription', 'delete']
+    : ['details', 'password', 'delete'];
 
   useEffect(() => {
     if (!sections.includes(tab)) setTab('details');
@@ -354,7 +372,13 @@ function ProfileDialog({
             className={tab === t ? 'segmented__btn is-on' : 'segmented__btn'}
             onClick={() => setTab(t)}
           >
-            {t === 'details' ? 'Details' : t === 'password' ? 'Password' : 'Subscription'}
+            {t === 'details'
+              ? 'Details'
+              : t === 'password'
+                ? 'Password'
+                : t === 'subscription'
+                  ? 'Subscription'
+                  : 'Delete'}
           </button>
         ))}
       </div>
@@ -363,8 +387,10 @@ function ProfileDialog({
         <DetailsForm profile={profile} email={email} userId={user.id} onSaved={onSaved} />
       ) : tab === 'password' ? (
         <PasswordForm user={user} />
-      ) : (
+      ) : tab === 'subscription' ? (
         <SubscriptionPanel profile={profile} onChanged={onSaved} />
+      ) : (
+        <DeletePanel profile={profile} email={email} />
       )}
     </Dialog>
   );
@@ -793,6 +819,100 @@ function PasswordForm({ user }: { user: User }) {
       <button type="submit" className="btn btn--primary" disabled={busy}>
         {busy ? 'Working…' : existing ? 'Change password' : 'Set password'}
       </button>
+    </form>
+  );
+}
+
+/**
+ * Deleting the account.
+ *
+ * Three things stand between a stray click and an irreversible delete, and
+ * each does a different job: the panel is last, the consequences are spelled
+ * out before the input rather than after it, and the button stays disabled
+ * until the word is typed. A confirm() dialog would be one click - and people
+ * dismiss those without reading by reflex.
+ *
+ * The subscription warning is not decoration. Deleting an account with a live
+ * subscription is the case where getting this wrong costs real money, so the
+ * panel says plainly that it will be cancelled, and the Edge Function cancels
+ * it first and refuses to delete anything if that fails.
+ */
+function DeletePanel({ profile, email }: { profile: Profile | null; email: string }) {
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const live = profile?.status === 'active' || profile?.status === 'trialing' || profile?.status === 'past_due';
+  const ready = deleteConfirmed(typed);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ready || busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await deleteAccount(typed.trim());
+      // The account is gone, so there is no session left to refresh and
+      // nothing on this page that still makes sense. A reload lands on the
+      // signed-out dashboard, which is the truthful state.
+      window.location.assign(import.meta.env.BASE_URL);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete your account.');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="stack" style={{ marginTop: 16 }}>
+      <div className="danger">
+        <p className="danger__title">Deleting your account is permanent</p>
+        <p className="danger__text">
+          This removes <b>{email}</b> and everything stored against it: your profile, your
+          saved estimates and share links, and your subscription record. It cannot be undone,
+          and the same email can sign up again afterwards only as a new, empty account.
+        </p>
+        {live ? (
+          <p className="danger__text">
+            <b>Your {titleCase(profile?.tier ?? 'paid')} subscription will be cancelled</b> at
+            Lemon Squeezy first, so you are not charged again. If that cancellation fails,
+            nothing is deleted — you would rather keep an account than keep a bill.
+          </p>
+        ) : null}
+        <p className="danger__text">
+          Your prompts were never uploaded, so there is nothing of them to delete. Invoices
+          stay with Lemon Squeezy, the merchant of record.
+        </p>
+        <p className="danger__prompt">
+          To confirm, type <code>{DELETE_PHRASE}</code> below.
+        </p>
+      </div>
+
+      <div className="field">
+        <label className="field__label" htmlFor="delete-confirm">
+          Confirmation
+        </label>
+        <input
+          id="delete-confirm"
+          className="input"
+          type="text"
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder={DELETE_PHRASE}
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          aria-describedby="delete-help"
+        />
+        <span id="delete-help" className="muted" style={{ fontSize: 11 }}>
+          The button stays disabled until this matches exactly.
+        </span>
+      </div>
+
+      <button type="submit" className="btn btn--danger" disabled={!ready || busy}>
+        {busy ? 'Deleting…' : 'Delete my account permanently'}
+      </button>
+
+      {error ? <p className="notice notice--error">{error}</p> : null}
     </form>
   );
 }
