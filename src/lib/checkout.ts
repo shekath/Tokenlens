@@ -43,29 +43,6 @@ export interface CheckoutInputs {
   /** Resolves a variant env key to its configured id. */
   variantFor: (envKey: string | undefined) => string | null;
   profile: { id: string; email: string | null } | null;
-  /**
-   * Where Lemon Squeezy should send the customer after they pay. Passed in
-   * rather than read from import.meta.env here, because this module is
-   * imported directly by the node test suite, which has no Vite env.
-   */
-  returnTo?: string | null;
-}
-
-/**
- * Lemon Squeezy wants an absolute http(s) URL for success_url and ignores
- * anything else. A bad value is not worth failing a checkout over - the
- * customer is holding a card, and the worst case without the parameter is the
- * one we already had: they stop on Lemon Squeezy's confirmation page. So
- * validate, and drop it silently if it is not usable.
- */
-function usableReturnUrl(value: string | null | undefined): string | null {
-  if (!value) return null;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : null;
-  } catch {
-    return null;
-  }
 }
 
 export function checkoutTarget({
@@ -74,7 +51,6 @@ export function checkoutTarget({
   base,
   variantFor,
   profile,
-  returnTo,
 }: CheckoutInputs): CheckoutTarget {
   // An annual variant is optional. Falling back here means a plan priced
   // annually but not yet configured sells at its monthly rate, rather than
@@ -135,16 +111,6 @@ export function checkoutTarget({
   url.searchParams.set('checkout[custom][user_id]', profile.id);
   if (profile.email) url.searchParams.set('checkout[email]', profile.email);
   url.searchParams.set('embed', '0');
-
-  // Without this the customer stops on Lemon Squeezy's confirmation page with
-  // no way back. It matters most when the popup blocker fired: openCheckoutWindow
-  // then navigated THIS tab to the checkout, so there is no tab waiting behind
-  // it to return to. It also overrides the product's own redirect setting in
-  // the Lemon Squeezy dashboard, which keeps the destination in the app rather
-  // than in a console someone has to remember to configure.
-  const success = usableReturnUrl(returnTo);
-  if (success) url.searchParams.set('checkout[success_url]', success);
-
   return { ok: true, url: url.toString() };
 }
 
