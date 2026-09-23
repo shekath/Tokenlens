@@ -183,9 +183,32 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
   } catch (err) {
-    // Release the claim so the retry can do real work rather than short-circuit
+    // Release the claim so a retry can do real work rather than short-circuit
     // on a ledger row for an update that never landed.
     await supabase.from('billing_events').delete().eq('event_id', eventId);
+
+    // 23503 is foreign_key_violation. On the upsert path it means one thing:
+    // custom_data.user_id names an account that no longer exists, so the
+    // subscriptions row cannot reference it. That is what a deleted account
+    // looks like from here.
+    //
+    // Lemon Squeezy does not know the account is gone and keeps sending
+    // events for the subscription it cancelled on the way out. Answering 500
+    // asks it to retry something that can never succeed - the user will not
+    // come back - and that is exactly what happened the first time an account
+    // was deleted: six 500s in thirty seconds before Lemon Squeezy gave up.
+    //
+    // So acknowledge it. The subscription was already cancelled by
+    // delete-account before the account went, so nothing is left billing.
+    if ((err as { code?: string })?.code === '23503') {
+      console.warn('Event for a deleted account', {
+        eventId,
+        eventName,
+        detail: (err as { details?: string }).details,
+      });
+      return Response.json({ received: true, deletedAccount: true });
+    }
+
     console.error('Failed to apply billing event', { eventId, eventName, err });
     return new Response('Failed to apply event', { status: 500 });
   }
