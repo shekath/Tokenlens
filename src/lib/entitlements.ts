@@ -28,7 +28,13 @@ export type Feature =
   | 'pdfProposal'
   | 'csvExport'
   | 'shareLinks'
-  | 'whiteLabel';
+  | 'whiteLabel'
+  /** Volatile-content ordering linter, in the app and in the CLI / MCP server. */
+  | 'cacheLinter'
+  /** Provider usage export set against saved estimates. */
+  | 'usageReconcile'
+  /** `tokenticks diff`: the monthly cost delta of a change, for a pull request. */
+  | 'ciCostDiff';
 
 export interface Entitlements {
   tier: Tier;
@@ -66,6 +72,9 @@ const NONE: Record<Feature, boolean> = {
   csvExport: false,
   shareLinks: false,
   whiteLabel: false,
+  cacheLinter: false,
+  usageReconcile: false,
+  ciCostDiff: false,
 };
 
 export const ENTITLEMENTS: Record<Tier, Entitlements> = {
@@ -87,6 +96,7 @@ export const ENTITLEMENTS: Record<Tier, Entitlements> = {
       cacheSimulator: true,
       batchForecast: true,
       trimmer: true,
+      cacheLinter: true,
       pdfProposal: true,
       csvExport: true,
     },
@@ -108,6 +118,9 @@ export const ENTITLEMENTS: Record<Tier, Entitlements> = {
       csvExport: true,
       shareLinks: true,
       whiteLabel: true,
+      cacheLinter: true,
+      usageReconcile: true,
+      ciCostDiff: true,
     },
   },
 };
@@ -164,7 +177,8 @@ export const PLANS: Plan[] = [
     highlights: [
       'All 30+ commercial models',
       'Cache break-even and ROI simulator',
-      'Token Trimmer prompt linter',
+      'Token Trimmer and cache-order linter',
+      'Trimmer and cache checks in CI and your editor (CLI + MCP)',
       'Batch CSV / JSONL forecasting, up to 10,000 rows',
       'Branded PDF cost proposals and CSV export',
       'Unlimited saved estimates',
@@ -182,7 +196,8 @@ export const PLANS: Plan[] = [
       'Custom and fine-tuned model rate cards',
       'Cache TTL lifecycle and multi-turn agent modelling',
       'Unlimited batch processing',
-      'Team-wide linting rules',
+      'Team-wide linting rules and pull-request cost diffs',
+      'Spend reconciliation against real usage exports',
       'White-label proposals and shareable links',
     ],
   },
@@ -241,6 +256,18 @@ export const COMPARISON: Array<{ label: string; free: string; pro: string; team:
     free: 'Copy as Markdown',
     pro: 'Branded PDF proposal and CSV',
     team: 'White-label portal and share links',
+  },
+  {
+    label: 'Developer tools (CLI + MCP)',
+    free: 'Token counts and costs, 5 models',
+    pro: 'Plus Trimmer and cache-order checks',
+    team: 'Plus team rule config and PR cost diffs',
+  },
+  {
+    label: 'Spend tracking',
+    free: 'Estimates only',
+    pro: 'Estimates only',
+    team: 'Reconcile estimates against usage exports',
   },
   {
     label: 'Saved estimates',

@@ -38,10 +38,11 @@ import {
   ticketProblem,
   type Ticket,
 } from '../lib/tickets';
+import { KEY_LABEL_MAX, createKey, listKeys, revokeKey, type CliKey } from '../lib/cliKeys';
 import type { Profile } from '../lib/subscription';
 import { listPrice, type Tier } from '../lib/entitlements';
 
-type Section = 'details' | 'password' | 'subscription' | 'support' | 'delete';
+type Section = 'details' | 'password' | 'subscription' | 'keys' | 'support' | 'delete';
 
 /**
  * Where the dropdown goes. The arithmetic, and why the old rule was wrong, is
@@ -227,6 +228,9 @@ export function ProfileMenu({
           >
             Plans and billing
           </button>
+          <button type="button" role="menuitem" className="pmenu__item" onClick={() => openSection('keys')}>
+            CLI &amp; MCP keys
+          </button>
 
           {/* An anchor, not a button: a mail client is a navigation, and this
               way the address is visible on hover and copyable on right-click
@@ -377,8 +381,8 @@ function ProfileDialog({
   // 'delete' is always last: it is the one panel here that cannot be undone,
   // and the tab order is the only ranking a segmented control has.
   const sections: Section[] = profile?.hasSubscription
-    ? ['details', 'password', 'subscription', 'support', 'delete']
-    : ['details', 'password', 'support', 'delete'];
+    ? ['details', 'password', 'subscription', 'keys', 'support', 'delete']
+    : ['details', 'password', 'keys', 'support', 'delete'];
 
   useEffect(() => {
     if (!sections.includes(tab)) setTab('details');
@@ -402,9 +406,11 @@ function ProfileDialog({
                 ? 'Password'
                 : t === 'subscription'
                   ? 'Subscription'
-                  : t === 'support'
-                    ? 'Support'
-                    : 'Delete'}
+                  : t === 'keys'
+                    ? 'Keys'
+                    : t === 'support'
+                      ? 'Support'
+                      : 'Delete'}
           </button>
         ))}
       </div>
@@ -415,6 +421,8 @@ function ProfileDialog({
         <PasswordForm user={user} />
       ) : tab === 'subscription' ? (
         <SubscriptionPanel profile={profile} onChanged={onSaved} />
+      ) : tab === 'keys' ? (
+        <KeysPanel tier={profile?.tier ?? 'free'} />
       ) : tab === 'support' ? (
         <SupportPanel profile={profile} email={email} />
       ) : (
@@ -1115,6 +1123,182 @@ function SupportPanel({ profile, email }: { profile: Profile | null; email: stri
           </p>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Licence keys for the tokenticks CLI and MCP server.
+ *
+ * The one moment that needs care is creation: the key is shown once, here, and
+ * cannot be recovered - only its hash is stored. So it stays on screen with a
+ * copy button until the person dismisses it, rather than vanishing on the next
+ * render, and the list below only ever shows the six-character prefix.
+ */
+function KeysPanel({ tier }: { tier: Tier }) {
+  const [keys, setKeys] = useState<CliKey[] | null>(null);
+  const [label, setLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fresh, setFresh] = useState<{ key: string; label: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    let live = true;
+    listKeys()
+      .then((rows) => live && setKeys(rows))
+      .catch((err: unknown) => {
+        if (!live) return;
+        setKeys([]);
+        setError(err instanceof Error ? err.message : 'Could not load your keys.');
+      });
+    return () => {
+      live = false;
+    };
+  }, [reload]);
+
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = label.trim();
+    if (!name) {
+      setError('Name the key after where it will live, e.g. "GitHub Actions" or "Laptop".');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const key = await createKey(name);
+      setFresh({ key, label: name });
+      setCopied(false);
+      setLabel('');
+      setReload((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create a key.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async (id: string) => {
+    setError(null);
+    try {
+      await revokeKey(id);
+      setConfirming(null);
+      setReload((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not revoke that key.');
+    }
+  };
+
+  const active = keys?.filter((k) => !k.revokedAt) ?? [];
+  const revoked = keys?.filter((k) => k.revokedAt) ?? [];
+  const unlocks =
+    tier === 'team'
+      ? 'Trimmer and cache-order checks, your own rule levels, and pull-request cost diffs'
+      : tier === 'pro'
+        ? 'Trimmer and cache-order checks in CI and in your editor'
+        : 'nothing beyond the free commands yet — upgrade to Pro or Team and the same key picks up the new plan';
+
+  return (
+    <div className="stack" style={{ marginTop: 16 }}>
+      <p className="card__note" style={{ margin: 0 }}>
+        The <code>tokenticks</code> command-line tool and MCP server run on your machine and
+        never upload a prompt. A key tells them your plan (<b>{titleCase(tier)}</b>): it unlocks{' '}
+        {unlocks}. Token counts and free-model pricing work without one.
+      </p>
+
+      {fresh ? (
+        <div className="notice notice--ok keyreveal">
+          <p style={{ margin: 0 }}>
+            <b>{fresh.label}</b> — copy it now. This is the only time the key is shown; we store a
+            hash, not the key.
+          </p>
+          <div className="keyreveal__row">
+            <code className="keyreveal__key">{fresh.key}</code>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                void navigator.clipboard.writeText(fresh.key).then(() => setCopied(true));
+              }}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <pre className="codeblock keyreveal__use">{`# CI: a repository secret named TOKENTICKS_KEY
+# Terminal:
+export TOKENTICKS_KEY=<the key>
+npx tokenticks whoami
+# Claude Code:
+claude mcp add tokenticks -e TOKENTICKS_KEY=<the key> -- npx -y tokenticks mcp`}</pre>
+          <button type="button" className="btn btn--ghost" onClick={() => setFresh(null)}>
+            I have saved it
+          </button>
+        </div>
+      ) : null}
+
+      <form className="row keyform" onSubmit={create}>
+        <label className="sr-only" htmlFor="key-label">
+          Key name
+        </label>
+        <input
+          id="key-label"
+          className="input"
+          value={label}
+          maxLength={KEY_LABEL_MAX}
+          placeholder="Where it will be used, e.g. GitHub Actions"
+          onChange={(e) => setLabel(e.target.value)}
+        />
+        <button type="submit" className="btn" disabled={busy}>
+          {busy ? 'Creating…' : 'Create key'}
+        </button>
+      </form>
+
+      {error ? <p className="notice notice--error">{error}</p> : null}
+
+      {keys === null ? (
+        <p className="muted">Loading your keys…</p>
+      ) : active.length === 0 && revoked.length === 0 ? (
+        <p className="muted" style={{ margin: 0 }}>
+          No keys yet. One per place it runs — a CI secret, a laptop — so each can be revoked alone.
+        </p>
+      ) : (
+        <ul className="keylist">
+          {[...active, ...revoked].map((k) => (
+            <li key={k.id} className={k.revokedAt ? 'is-revoked' : undefined}>
+              <span className="keylist__label">{k.label}</span>
+              <span className="keylist__detail">
+                <code className="keylist__prefix">{k.prefix}…</code> ·{' '}
+                {k.revokedAt
+                  ? `revoked ${formatBillingDate(new Date(k.revokedAt))}`
+                  : k.lastUsedAt
+                    ? `last used ${formatBillingDate(new Date(k.lastUsedAt))}`
+                    : `created ${formatBillingDate(new Date(k.createdAt))}, not used yet`}
+              </span>
+              {k.revokedAt ? null : confirming === k.id ? (
+                <span className="row" style={{ gap: 6 }}>
+                  <button type="button" className="btn btn--danger" onClick={() => void revoke(k.id)}>
+                    Revoke
+                  </button>
+                  <button type="button" className="btn btn--ghost" onClick={() => setConfirming(null)}>
+                    Keep
+                  </button>
+                </span>
+              ) : (
+                <button type="button" className="btn btn--ghost" onClick={() => setConfirming(k.id)}>
+                  Revoke…
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="muted" style={{ fontSize: 11, margin: 0 }}>
+        Revoking takes effect at the tool&apos;s next check (within 12 hours, or at once on a fresh
+        CI runner). A revoked key falls back to the free plan; it never fails a build.
+      </p>
     </div>
   );
 }

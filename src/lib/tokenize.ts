@@ -169,18 +169,25 @@ function nonLatinShare(text: string): number {
   return letters ? other / letters : 0;
 }
 
-/** Runs the BPE. Returns EMPTY_BASE until the primary encoder has loaded. */
-export function encodeBase(text: string): BaseEncoding {
+/**
+ * Runs the BPE. Returns EMPTY_BASE until the primary encoder has loaded.
+ *
+ * `pieces: false` skips decoding tokens back to text - the inspector needs
+ * them, a counter does not, and the CLI counts whole repositories.
+ */
+export function encodeBase(text: string, opts: { pieces?: boolean } = {}): BaseEncoding {
   if (!text || !o200k) return EMPTY_BASE;
 
   const ids = o200k.encode(text);
   const pieces: TokenPiece[] = [];
   const truncated = ids.length > INSPECT_LIMIT;
-  const slice = truncated ? ids.slice(0, INSPECT_LIMIT) : ids;
-  let i = 0;
-  for (const piece of o200k.decodeGenerator(slice)) {
-    pieces.push({ id: slice[i]!, text: piece });
-    i += 1;
+  if (opts.pieces !== false) {
+    const slice = truncated ? ids.slice(0, INSPECT_LIMIT) : ids;
+    let i = 0;
+    for (const piece of o200k.decodeGenerator(slice)) {
+      pieces.push({ id: slice[i]!, text: piece });
+      i += 1;
+    }
   }
 
   return {

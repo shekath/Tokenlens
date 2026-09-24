@@ -96,6 +96,39 @@ export const FEATURE_DOCS: FeatureDoc[] = [
     ],
   },
   {
+    id: 'order',
+    title: 'Cache order',
+    tier: 'pro',
+    tagline: 'Why a prompt cache that should be hitting is not.',
+    art: 'cache',
+    shot: null,
+    what: [
+      'Prompt caching is a prefix match. A provider reuses the cached part of a prompt only if every token before the cache point is identical, so one value that changes per call — a timestamp, a request id, a {{user_name}} — stops everything after it from caching, however stable.',
+      'The Cache ROI tab says whether caching pays. This says why it is not paying: it finds the per-call values, measures the stable tokens they lock out, and prices the loss at your call volume.',
+    ],
+    how: [
+      {
+        step: 'Find the values that change',
+        detail:
+          'Template placeholders, UUIDs and clock times are flagged as near-certain; bare dates, Unix timestamps and long hex ids as possible. Untick any that are fixed in your prompt and the numbers update.',
+      },
+      {
+        step: 'Measure the prefix, not a guess',
+        detail:
+          'The cacheable prefix is measured to the character — the text before the first per-call value — and re-measured after moving those blocks to the end, so the difference is a real token count.',
+      },
+      {
+        step: 'Reorder, blocks kept whole',
+        detail:
+          'The suggested prompt moves whole blocks (runs of lines, code fences never split), not single lines out of the middle of a list. Read it before using it: only you know whether an instruction depended on coming first.',
+      },
+    ],
+    when: [
+      'Caching is switched on and the bill barely moved.',
+      'A system prompt starts with "Today is …" or the user’s name, and runs thousands of tokens after it.',
+    ],
+  },
+  {
     id: 'trimmer',
     title: 'Token Trimmer',
     tier: 'pro',
@@ -220,6 +253,73 @@ export const FEATURE_DOCS: FeatureDoc[] = [
     when: [
       'Running fine-tuned or self-hosted models whose costs are yours, not a vendor’s.',
       'Circulating a cost estimate to people who should see the figure and not the prompt.',
+    ],
+  },
+  {
+    id: 'devtools',
+    title: 'CLI, CI checks and MCP server',
+    tier: 'pro',
+    tagline: 'The same engine, where your prompts actually live.',
+    art: 'trim',
+    shot: null,
+    what: [
+      'The tokenticks command-line tool runs this engine against the prompt files in your repository: in a terminal, in CI, and — as an MCP server — inside Claude Code, Cursor or Claude Desktop, so an assistant can answer “what does this prompt cost on Haiku instead?” mid-conversation.',
+      'It runs on your machine. Prompts are read and counted locally and never uploaded; the only network call is a licence check, cached for 12 hours.',
+    ],
+    how: [
+      {
+        step: 'Every plan: counts and budgets',
+        detail:
+          'Token counts for every model, prices for the five free models, and a token or monthly budget per prompt file that fails the build when it is exceeded.',
+      },
+      {
+        step: 'Pro: Trimmer and cache-order checks',
+        detail:
+          'The same waste rules and cache-order check as the app, as inline pull-request annotations with a dollar figure on each, and as MCP tools.',
+      },
+      {
+        step: 'Team: your rules, and the cost of every change',
+        detail:
+          'Set which checks fail the build for your whole team, and have every pull request that edits a prompt get a comment with its monthly cost change.',
+      },
+    ],
+    when: [
+      'Prompts live in a repository and change through pull requests.',
+      'You want an assistant to price a prompt without pasting it into a website.',
+      'Keys: profile menu → CLI & MCP keys. A licence problem never fails a build — it falls back to free features and says so.',
+    ],
+  },
+  {
+    id: 'reconcile',
+    title: 'Spend reconciliation',
+    tier: 'team',
+    tagline: 'What you estimated, what you were billed, and why they differ.',
+    art: 'batch',
+    shot: null,
+    what: [
+      'Drop in a usage export from your provider and set it against the estimates you saved. The variance is split into a volume effect (more or fewer calls than planned) and a per-call effect (each call cost more or less), and the two add up to the total exactly.',
+      'The export is parsed in your browser and never uploaded.',
+    ],
+    how: [
+      {
+        step: 'Map the columns',
+        detail:
+          'Model, tokens, requests and cost are matched by name, and the mapping is shown for you to correct: exports differ between providers and change without notice.',
+      },
+      {
+        step: 'Choose the estimates',
+        detail:
+          'Tick the saved estimates that describe the workload and the daily volume each assumed. Estimates saved from now on remember it.',
+      },
+      {
+        step: 'Read the causes',
+        detail:
+          'More calls, bigger prompts, longer answers, a model nobody planned for, or an estimate with no usage at all — named, largest first.',
+      },
+    ],
+    when: [
+      'The first real invoice arrives and does not match the proposal.',
+      'Deciding whether to fix volume (rate limits, batching) or cost per call (shorter prompts, a cheaper model).',
     ],
   },
 ];

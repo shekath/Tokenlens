@@ -1,0 +1,40 @@
+{
+  "name": "tokenticks",
+  "version": "0.1.0",
+  "description": "Token counts and LLM cost checks for prompts in your repo: a CI linter, pull-request cost diffs, and an MCP server. Runs locally; prompts are never uploaded.",
+  "type": "module",
+  "bin": {
+    "tokenticks": "dist/tokenticks.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "gpt-tokenizer": "^4.0.0"
+  },
+  "keywords": [
+    "llm",
+    "tokens",
+    "tokenizer",
+    "cost",
+    "mcp",
+    "prompt",
+    "ci",
+    "finops"
+  ],
+  "homepage": "https://shekath.github.io/Tokenlens/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shekath/Tokenlens.git",
+    "directory": "cli"
+  },
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "node build.mjs",
+    "prepublishOnly": "node build.mjs"
+  }
+}
