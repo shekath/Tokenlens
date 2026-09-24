@@ -39,10 +39,11 @@ import {
   type Ticket,
 } from '../lib/tickets';
 import { KEY_LABEL_MAX, createKey, listKeys, revokeKey, type CliKey } from '../lib/cliKeys';
+import { ACCOUNT_EVENT, type AccountSection } from '../lib/accountEvents';
 import type { Profile } from '../lib/subscription';
 import { listPrice, type Tier } from '../lib/entitlements';
 
-type Section = 'details' | 'password' | 'subscription' | 'keys' | 'support' | 'delete';
+type Section = AccountSection;
 
 /**
  * Where the dropdown goes. The arithmetic, and why the old rule was wrong, is
@@ -146,6 +147,24 @@ export function ProfileMenu({
     setOpen(false);
     setSection(s);
   };
+
+  // Other pages (the Docs guide's "Open CLI & MCP keys") ask for a section by
+  // event; see lib/accountEvents.ts.
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      const want = (e as CustomEvent<AccountSection>).detail;
+      if (want) openSection(want);
+    };
+    // Following a link to another page (the Keys panel links to the Docs
+    // guide) should not leave the dialog open on top of it.
+    const onRoute = () => setSection(null);
+    window.addEventListener(ACCOUNT_EVENT, onAsk);
+    window.addEventListener('hashchange', onRoute);
+    return () => {
+      window.removeEventListener(ACCOUNT_EVENT, onAsk);
+      window.removeEventListener('hashchange', onRoute);
+    };
+  }, []);
 
   return (
     <div className="pmenu" ref={wrap}>
@@ -1295,6 +1314,13 @@ claude mcp add tokenticks -e TOKENTICKS_KEY=<the key> -- npx -y tokenticks mcp`}
           ))}
         </ul>
       )}
+      <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+        New to the CLI?{' '}
+        <a href="#/docs?s=cli-guide">
+          Read the setup guide
+        </a>{' '}
+        — commands, CI workflow and MCP config, ready to copy.
+      </p>
       <p className="muted" style={{ fontSize: 11, margin: 0 }}>
         Revoking takes effect at the tool&apos;s next check (within 12 hours, or at once on a fresh
         CI runner). A revoked key falls back to the free plan; it never fails a build.

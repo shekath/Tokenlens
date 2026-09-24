@@ -35,6 +35,7 @@ import { NAV, useHashRoute } from './lib/useHashRoute';
 import { SiteFooter } from './components/SiteFooter';
 import { useSubscription, type Profile } from './lib/subscription';
 import { hasBackend } from './lib/supabase';
+import { openAccountSection } from './lib/accountEvents';
 import type { User } from '@supabase/supabase-js';
 import type { Feature, Plan } from './lib/entitlements';
 import type { NewEstimate } from './lib/estimates';
@@ -510,7 +511,17 @@ export default function App() {
         <TabBoundary label={route === 'docs' ? 'Docs' : 'FAQ'}>
           <Suspense fallback={<div className="shell empty">Loading…</div>}>
             {route === 'docs' ? (
-              <DocsPage onPricing={openPricing} onBack={() => goTo('app')} />
+              <DocsPage
+                onPricing={openPricing}
+                onBack={() => goTo('app')}
+                onKeys={
+                  !hasBackend
+                    ? null
+                    : auth.user
+                      ? () => openAccountSection('keys')
+                      : () => setAuthOpen(true)
+                }
+              />
             ) : (
               <FaqPage onBack={() => goTo('app')} />
             )}

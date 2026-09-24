@@ -2290,3 +2290,241 @@ table.data tbody tr.is-on td:first-child {
 .delta-down {
   color: var(--success-text);
 }
+
+/* ======================================================= developer guide === */
+
+.docnav__link--guide {
+  border-color: var(--series-1);
+  color: var(--series-1);
+  font-weight: 600;
+}
+
+.guide__plans td:not(:first-child),
+.guide__plans th:not(:first-child) {
+  text-align: center;
+}
+
+.guide__steps {
+  list-style: none;
+  margin: 26px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.guide__step {
+  min-width: 0;
+  scroll-margin-top: 80px;
+}
+
+.guide__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.guide__num {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--series-1);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.guide__notes {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  max-width: 68ch;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.guide__notes li {
+  margin-bottom: 4px;
+}
+
+.guide__trouble {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 76ch;
+}
+
+.guide__trouble dt code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.guide__trouble dd {
+  margin: 3px 0 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* Code blocks. Commands and files sit on a fixed dark "editor" panel in both
+   themes, so the syntax colours below have one background to be checked
+   against; output is a light dashed box, so nobody mistakes what comes back
+   for something to type. */
+.code {
+  margin: 12px 0 0;
+  min-width: 0;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid #2c3038;
+  background: #17191e;
+  color: #e8e6e1;
+}
+
+.code__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 7px 8px 7px 12px;
+  background: #1f2228;
+  border-bottom: 1px solid #2c3038;
+  font-size: 12px;
+}
+
+.code__kind {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #2a78d6;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.code--file .code__kind {
+  background: #7a56c9;
+}
+
+.code__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #c9c7c1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.code__file {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.code__copy {
+  flex: none;
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid #3a3f49;
+  border-radius: 6px;
+  background: transparent;
+  color: #e8e6e1;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.code__copy:hover {
+  background: #2c3038;
+}
+
+.code__copy:focus-visible,
+.code__body:focus-visible {
+  outline: 2px solid #7fb8ff;
+  outline-offset: -2px;
+}
+
+/* Long lines scroll inside the block, never widen the page. */
+.code__body {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.code__line {
+  display: inline;
+}
+
+.tok-prompt {
+  color: #6d7380;
+  user-select: none;
+}
+
+.tok-comment {
+  color: #8b9099;
+  font-style: italic;
+}
+
+.tok-string {
+  color: #a6d98a;
+}
+
+.tok-key {
+  color: #7fb8ff;
+}
+
+.code--output {
+  border: 1px dashed var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.code--output .code__head {
+  background: transparent;
+  border-bottom: 1px dashed var(--border-strong);
+}
+
+.code--output .code__kind {
+  background: var(--text-muted);
+}
+
+.code--output .code__label {
+  color: var(--text-secondary);
+}
+
+/* Commands and output wrap: a command whose end is scrolled out of sight is
+   a command people copy half of by hand. The hanging indent keeps each "$"
+   at the margin so a wrapped line never looks like a second command. Files
+   keep their exact lines - indentation is meaning in YAML. */
+.code--command .code__body,
+.code--output .code__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.code--command .code__line,
+.code--output .code__line {
+  display: block;
+  padding-left: 2ch;
+  text-indent: -2ch;
+}
+
+.tok-word {
+  white-space: nowrap;
+}

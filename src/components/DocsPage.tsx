@@ -1,8 +1,20 @@
+import { useEffect } from 'react';
 import { FEATURE_DOCS } from '../lib/featureDocs';
 import { PLANS } from '../lib/entitlements';
 import { MODELS, PRICING_AS_OF } from '../lib/models';
 import { Banner } from './Banner';
 import { Shot } from './Shot';
+import { CliGuide } from './CliGuide';
+
+/** "#/docs?s=cli-guide" lands on that section; the router ignores the query. */
+function sectionFromHash(hash: string): string | null {
+  const q = hash.split('?')[1];
+  return q ? new URLSearchParams(q).get('s') : null;
+}
+
+function scrollToDoc(id: string) {
+  document.getElementById(`doc-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 /**
  * The product documentation.
@@ -11,7 +23,27 @@ import { Shot } from './Shot';
  * a reader who can scroll past the two they do not care about is better served
  * than one navigating a tree to find out which page they want.
  */
-export function DocsPage({ onPricing, onBack }: { onPricing: () => void; onBack: () => void }) {
+export function DocsPage({
+  onPricing,
+  onBack,
+  onKeys,
+}: {
+  onPricing: () => void;
+  onBack: () => void;
+  /** Opens CLI & MCP keys (or sign-in); null when the app has no backend. */
+  onKeys: (() => void) | null;
+}) {
+  useEffect(() => {
+    const land = () => {
+      const s = sectionFromHash(window.location.hash);
+      // A frame's grace so the lazily loaded page has laid out before we measure.
+      if (s) window.requestAnimationFrame(() => scrollToDoc(s));
+    };
+    land();
+    window.addEventListener('hashchange', land);
+    return () => window.removeEventListener('hashchange', land);
+  }, []);
+
   return (
     <main className="shell page">
       <header className="pagehead pagehead--tall">
@@ -29,13 +61,19 @@ export function DocsPage({ onPricing, onBack }: { onPricing: () => void; onBack:
 
       <nav className="docnav" aria-label="On this page">
         {FEATURE_DOCS.map((f) => (
-          <a key={f.id} className="docnav__link" href={`#/docs`} onClick={(e) => {
+          <a key={f.id} className="docnav__link" href={`#/docs?s=${f.id}`} onClick={(e) => {
             e.preventDefault();
-            document.getElementById(`doc-${f.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            scrollToDoc(f.id);
           }}>
             {f.title}
           </a>
         ))}
+        <a className="docnav__link docnav__link--guide" href="#/docs?s=cli-guide" onClick={(e) => {
+          e.preventDefault();
+          scrollToDoc('cli-guide');
+        }}>
+          Developer guide: CLI &amp; keys
+        </a>
       </nav>
 
       {FEATURE_DOCS.map((feature) => (
@@ -73,6 +111,8 @@ export function DocsPage({ onPricing, onBack }: { onPricing: () => void; onBack:
           </ul>
         </article>
       ))}
+
+      <CliGuide onKeys={onKeys} />
 
       <section className="doc" aria-labelledby="doc-plans">
         <h2 id="doc-plans" className="doc__title">
