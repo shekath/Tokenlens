@@ -107,11 +107,11 @@ jobs:
     env:
       TOKENTICKS_KEY: ${{ secrets.TOKENTICKS_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # diff needs the base branch's history
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -124,7 +124,7 @@ jobs:
 
       - name: Comment on the pull request
         if: always() && hashFiles('cost.md') != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const body = require('fs').readFileSync('cost.md', 'utf8');
