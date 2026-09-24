@@ -161,7 +161,13 @@ export function PricingDialog({
       <p className="muted" style={{ fontSize: 11, marginTop: 14 }}>
         Billing runs through Lemon Squeezy as merchant of record, so VAT, GST and sales
         tax are handled at checkout. Cancel any time; access continues to the end of the
-        paid period.
+        paid period. Payments are non-refundable, except where the law of your country
+        requires a refund. Prices and plans may change; we give notice before a new price
+        applies to a renewal. See the{' '}
+        <a className="linkish" href="#/privacy?s=terms" onClick={onClose}>
+          Privacy Policy and terms
+        </a>
+        .
       </p>
     </Dialog>
   );

@@ -13,9 +13,13 @@
 
 import { useEffect, useState } from 'react';
 
-export type Route = 'app' | 'docs' | 'devtools' | 'faq';
+export type Route = 'app' | 'docs' | 'devtools' | 'faq' | 'privacy';
 
-const ROUTES: Route[] = ['app', 'docs', 'devtools', 'faq'];
+/**
+ * Every page the router knows. 'privacy' is reachable from the footer and from
+ * the sign-up and pricing dialogs, but is not in the top navigation.
+ */
+const ROUTES: Route[] = ['app', 'docs', 'devtools', 'faq', 'privacy'];
 
 /**
  * The navigation, in order, with the dashboard first because it is the home
@@ -27,6 +31,15 @@ export const NAV: { route: Route; label: string }[] = [
   { route: 'devtools', label: 'Dev tools' },
   { route: 'faq', label: 'FAQ' },
 ];
+
+/** Each page's name, for error boundaries and anything else that names it. */
+export const ROUTE_LABELS: Record<Route, string> = {
+  app: 'Dashboard',
+  docs: 'Docs',
+  devtools: 'Dev tools',
+  faq: 'FAQ',
+  privacy: 'Privacy Policy',
+};
 
 export function routeFromHash(hash: string): Route {
   const name = hash.replace(/^#\/?/, '').split(/[?&]/)[0]?.toLowerCase() ?? '';

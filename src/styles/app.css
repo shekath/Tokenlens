@@ -2718,3 +2718,140 @@ table.data tbody tr.is-on td:first-child {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ======================================================= privacy policy === */
+
+/* Logical properties throughout (inline-start, not left), so the Arabic text,
+   which sets dir="rtl" on the page, mirrors without a second stylesheet. */
+
+.policy__meta {
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.policy__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 18px;
+  margin-top: 22px;
+}
+
+.policy__lang {
+  flex: 0 1 220px;
+  min-width: 0;
+}
+
+.policy__note {
+  flex: 1 1 280px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.policy__section {
+  margin-top: 30px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: 80px;
+}
+
+.policy__title {
+  margin: 0 0 12px;
+  font-size: 19px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.policy__num {
+  color: var(--series-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.policy__p,
+.policy__list {
+  max-width: 72ch;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.policy__p {
+  margin: 0 0 12px;
+}
+
+.policy__list {
+  margin: 0 0 12px;
+  padding-inline-start: 22px;
+}
+
+.policy__list li {
+  margin-bottom: 8px;
+}
+
+.policy__list strong {
+  color: var(--text-primary);
+}
+
+.policy a {
+  color: var(--series-1);
+  overflow-wrap: anywhere;
+}
+
+.policy__tablewrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 4px 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm, 8px);
+}
+
+.policy__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.policy__table th,
+.policy__table td {
+  padding: 9px 12px;
+  text-align: start;
+  vertical-align: top;
+  border-bottom: 1px solid var(--gridline);
+  line-height: 1.5;
+}
+
+.policy__table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.policy__table thead th {
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.policy__table tbody th {
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.policy__table td {
+  color: var(--text-secondary);
+}
+
+/* Upper-casing and letter-spacing mean nothing in Arabic, Hindi or Japanese
+   and damage connected scripts; keep them for Latin text only. */
+.policy:is([lang='ar'], [lang='hi-IN'], [lang='ja-JP']) :is(.pagehead__eyebrow, .policy__table thead th) {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+@media (max-width: 560px) {
+  .policy__table tbody th {
+    white-space: normal;
+  }
+}

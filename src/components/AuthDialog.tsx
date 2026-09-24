@@ -186,6 +186,16 @@ export function AuthDialog({
               Your prompts are never uploaded. An account stores saved estimates — token
               counts and costs, never the prompt text.
             </p>
+
+            {/* Covers every way in, Google included: creating an account is
+                what accepts the policy, so the link has to sit on the form. */}
+            <p className="muted" style={{ fontSize: 11, margin: 0 }}>
+              By continuing, including with Google, you agree to the{' '}
+              <a className="linkish" href="#/privacy" onClick={onClose}>
+                Privacy Policy and terms
+              </a>
+              .
+            </p>
           </form>
         </>
       )}

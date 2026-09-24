@@ -59,6 +59,14 @@ export function SiteFooter({
           <button type="button" className="linkish" onClick={onPricing}>
             Plans and pricing
           </button>
+          <button
+            type="button"
+            className="linkish"
+            aria-current={route === 'privacy' ? 'page' : undefined}
+            onClick={() => onNavigate('privacy')}
+          >
+            Privacy Policy
+          </button>
           {supportHref ? (
             <a className="linkish" href={supportHref}>
               Contact support

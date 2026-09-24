@@ -54,3 +54,14 @@ test('a section query lands on the page and names the section', async () => {
   assert.equal(sectionFromHash('#/docs'), null);
   assert.equal(sectionFromHash('#/docs?from=email'), null);
 });
+
+test('the privacy policy routes, keeps its language and section, but stays out of the top bar', async () => {
+  const { sectionFromHash } = await import('../src/lib/useSectionLanding.ts');
+  const { ROUTE_LABELS } = await import('../src/lib/useHashRoute.ts');
+  assert.equal(routeFromHash('#/privacy'), 'privacy');
+  assert.equal(routeFromHash(hashFor('privacy')), 'privacy');
+  assert.equal(routeFromHash('#/privacy?lang=ar&s=terms'), 'privacy');
+  assert.equal(sectionFromHash('#/privacy?lang=ar&s=terms'), 'terms');
+  assert.ok(!NAV.some((item) => item.route === 'privacy'), 'reached from the footer, not the top bar');
+  assert.equal(ROUTE_LABELS.privacy, 'Privacy Policy');
+});

@@ -31,7 +31,7 @@ import { useAuth } from './lib/auth';
 import { ProfileMenu } from './components/ProfileMenu';
 import { TabBoundary } from './components/TabBoundary';
 import { retryImport } from './lib/lazyChunk';
-import { NAV, useHashRoute } from './lib/useHashRoute';
+import { NAV, ROUTE_LABELS, useHashRoute } from './lib/useHashRoute';
 import { SiteFooter } from './components/SiteFooter';
 import { useSubscription, type Profile } from './lib/subscription';
 import { hasBackend } from './lib/supabase';
@@ -87,6 +87,11 @@ const DevToolsPage = lazy(() =>
 );
 const FaqPage = lazy(() =>
   retryImport(() => import('./components/FaqPage'), 'FAQ').then((m) => ({ default: m.FaqPage })),
+);
+const PrivacyPage = lazy(() =>
+  retryImport(() => import('./components/PrivacyPage'), 'Privacy Policy').then((m) => ({
+    default: m.PrivacyPage,
+  })),
 );
 import { SavedEstimates } from './components/SavedEstimates';
 import { ProGatekeeper } from './components/ProGatekeeper';
@@ -511,7 +516,7 @@ export default function App() {
       </header>
 
       {route !== 'app' ? (
-        <TabBoundary label={route === 'docs' ? 'Docs' : route === 'devtools' ? 'Dev tools' : 'FAQ'}>
+        <TabBoundary label={ROUTE_LABELS[route]}>
           <Suspense fallback={<div className="shell empty">Loading…</div>}>
             {route === 'docs' ? (
               <DocsPage onPricing={openPricing} onBack={() => goTo('app')} onDevTools={() => goTo('devtools')} />
@@ -526,6 +531,8 @@ export default function App() {
                       : () => setAuthOpen(true)
                 }
               />
+            ) : route === 'privacy' ? (
+              <PrivacyPage onBack={() => goTo('app')} />
             ) : (
               <FaqPage onBack={() => goTo('app')} />
             )}

@@ -5,7 +5,8 @@
  *   npm run build && npm run preview &
  *   node scripts/visual-check.mjs [outputDir]
  *
- * Every tab of the dashboard is walked, then the #/docs, #/devtools and #/faq routes.
+ * Every tab of the dashboard is walked, then the #/docs, #/devtools, #/faq and
+ * #/privacy routes (the privacy policy in English, Hindi and right-to-left Arabic).
  *
  * Fails (exit 1) on a horizontal page scroll at any tested width, on an SVG label
  * that spills outside its own chart, on a floating panel that hangs off either
@@ -131,7 +132,7 @@ for (const cfg of CONFIGS) {
   // risk is different: full-bleed banners and 1200px screenshots are the widest
   // things the app renders, and a broken screenshot path degrades to alt text
   // rather than to an error, so check that the pixels actually arrived.
-  for (const route of ['docs', 'devtools', 'faq']) {
+  for (const route of ['docs', 'devtools', 'faq', 'privacy?lang=en', 'privacy?lang=hi', 'privacy?lang=ar']) {
     await page.evaluate((r) => { window.location.hash = `#/${r}`; }, route);
     await page.waitForTimeout(700);
     // Lazy images below the fold never load at the default scroll position.
@@ -155,12 +156,20 @@ for (const cfg of CONFIGS) {
       footerLinks: [...document.querySelectorAll('.footer__links button')].map((b) =>
         b.textContent.trim(),
       ),
+      dir: document.querySelector('main.page')?.getAttribute('dir') ?? null,
+      lang: document.querySelector('main.page')?.getAttribute('lang') ?? null,
     }));
+    if (route === 'privacy?lang=ar' && page_.dir !== 'rtl') {
+      problems.push(`${cfg.name} / #/${route}: Arabic is not laid out right to left`);
+    }
+    if (route === 'privacy?lang=hi' && page_.lang !== 'hi-IN') {
+      problems.push(`${cfg.name} / #/${route}: the page is not marked as Hindi (${page_.lang})`);
+    }
     if (!page_.heading) problems.push(`${cfg.name} / #/${route}: the page rendered no heading`);
     // The footer used to live inside the dashboard's <main>, so it disappeared
     // on both reference pages. It is the way back from the bottom of a long
     // page; if it is missing here, that regressed.
-    for (const link of ['Dashboard', 'Docs', 'Dev tools', 'FAQ']) {
+    for (const link of ['Dashboard', 'Docs', 'Dev tools', 'FAQ', 'Privacy Policy']) {
       if (!page_.footerLinks.includes(link)) {
         problems.push(`${cfg.name} / #/${route}: no "${link}" link in the footer`);
       }
@@ -172,7 +181,7 @@ for (const cfg of CONFIGS) {
     for (const shot of page_.shots.filter((s) => !s.loaded)) {
       problems.push(`${cfg.name} / #/${route}: screenshot did not load - ${shot.src}`);
     }
-    if (OUT) await page.screenshot({ path: `${OUT}/${cfg.name}-route-${route}.png`, fullPage: true });
+    if (OUT) await page.screenshot({ path: `${OUT}/${cfg.name}-route-${route.replace(/\W+/g, '-')}.png`, fullPage: true });
   }
   await page.evaluate(() => { window.location.hash = ''; });
   await page.waitForTimeout(400);

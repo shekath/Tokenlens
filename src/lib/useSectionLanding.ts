@@ -11,8 +11,17 @@ export function sectionFromHash(hash: string): string | null {
   return q ? new URLSearchParams(q).get('s') : null;
 }
 
+/**
+ * Scrolls a section to just below the sticky top bar. The bar is 57px tall on
+ * a desktop but wraps to about 175px on a phone, so a fixed CSS scroll margin
+ * left headings hidden underneath it there; measure it instead.
+ */
 export function scrollToSection(id: string): void {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const el = document.getElementById(id);
+  if (!el) return;
+  const bar = document.querySelector('.topbar');
+  const covered = bar && getComputedStyle(bar).position === 'sticky' ? bar.getBoundingClientRect().height : 0;
+  window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - covered - 16, behavior: 'smooth' });
 }
 
 export function useSectionLanding(prefix: string): void {
