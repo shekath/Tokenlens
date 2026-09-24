@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
   GUIDE_INTRO,
   GUIDE_PLANS,
@@ -6,6 +6,8 @@ import {
   TROUBLESHOOTING,
   type Snippet,
 } from '../lib/cliGuide';
+import { MODELS, PRICING_AS_OF, VENDORS } from '../lib/models';
+import { FREE_MODEL_IDS } from '../lib/entitlements';
 
 /**
  * The developer guide: CLI, CI and MCP, step by step. The body of the Dev
@@ -70,9 +72,14 @@ export function CliGuide({ onKeys }: { onKeys: (() => void) | null }) {
                 </button>
               </p>
             ) : null}
-            {step.snippets.map((s) => (
-              <CodeBlock key={s.label + s.code.slice(0, 20)} snippet={s} />
-            ))}
+            {runs(step.snippets).map((run) =>
+              run.length > 1 || run[0]!.group ? (
+                <SnippetTabs key={run[0]!.group! + run[0]!.tab} snippets={run} />
+              ) : (
+                <CodeBlock key={run[0]!.label + run[0]!.code.slice(0, 20)} snippet={run[0]!} />
+              ),
+            )}
+            {step.id === 'models' ? <ModelList /> : null}
             {step.notes && step.notes.length > 0 ? (
               <ul className="guide__notes">
                 {step.notes.map((n) => (
@@ -99,6 +106,119 @@ export function CliGuide({ onKeys }: { onKeys: (() => void) | null }) {
   );
 }
 
+/** Consecutive snippets sharing a group become one run; the rest stand alone. */
+function runs(snippets: Snippet[]): Snippet[][] {
+  const out: Snippet[][] = [];
+  for (const s of snippets) {
+    const last = out[out.length - 1];
+    if (s.group && last && last[0]!.group === s.group) last.push(s);
+    else out.push([s]);
+  }
+  return out;
+}
+
+/** One tab per tool; each tab shows that tool's snippets in order. */
+function SnippetTabs({ snippets }: { snippets: Snippet[] }) {
+  const tabs = [...new Set(snippets.map((s) => s.tab ?? s.label))];
+  const [active, setActive] = useState(tabs[0]!);
+  const base = useId();
+  const move = (dir: 1 | -1) => {
+    const i = (tabs.indexOf(active) + dir + tabs.length) % tabs.length;
+    setActive(tabs[i]!);
+    document.getElementById(`${base}-tab-${i}`)?.focus();
+  };
+  return (
+    <div className="snippettabs">
+      <div className="snippettabs__list" role="tablist" aria-label="Choose your tool">
+        {tabs.map((t, i) => (
+          <button
+            key={t}
+            id={`${base}-tab-${i}`}
+            type="button"
+            role="tab"
+            aria-selected={t === active}
+            aria-controls={`${base}-panel`}
+            tabIndex={t === active ? 0 : -1}
+            className={t === active ? 'snippettabs__tab is-on' : 'snippettabs__tab'}
+            onClick={() => setActive(t)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight') move(1);
+              if (e.key === 'ArrowLeft') move(-1);
+            }}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+      <div id={`${base}-panel`} role="tabpanel" aria-label={active}>
+        {snippets
+          .filter((s) => (s.tab ?? s.label) === active)
+          .map((s) => (
+            <CodeBlock key={s.label + s.code.slice(0, 20)} snippet={s} />
+          ))}
+      </div>
+    </div>
+  );
+}
+
+/** Every model tokenticks prices, straight from the registry the tool uses. */
+function ModelList() {
+  const free = new Set(FREE_MODEL_IDS);
+  const perM = (n: number) => `$${n < 1 ? n.toFixed(2) : n % 1 === 0 ? n.toFixed(0) : n.toFixed(2)}`;
+  return (
+    <div className="modellist">
+      <p className="modellist__head">
+        {MODELS.length} models from {VENDORS.length} vendors · rates in USD per million tokens, as
+        published on {PRICING_AS_OF}
+      </p>
+      <div className="tablewrap">
+        <table className="data modellist__table">
+          <thead>
+            <tr>
+              <th>Model id</th>
+              <th className="modellist__name">Model</th>
+              <th>Counts</th>
+              <th>Input</th>
+              <th>Output</th>
+              <th>Free plan</th>
+            </tr>
+          </thead>
+          {VENDORS.map((v) => {
+            const rows = MODELS.filter((m) => m.vendor === v);
+            if (rows.length === 0) return null;
+            return (
+              <tbody key={v}>
+                <tr className="modellist__vendor">
+                  <th colSpan={6} scope="colgroup">
+                    {v}
+                  </th>
+                </tr>
+                {rows.map((m) => {
+                  const exact = m.tokenizer === 'o200k' || m.tokenizer === 'cl100k';
+                  return (
+                    <tr key={m.id}>
+                      <td>
+                        <code className="modellist__id">{m.id}</code>
+                      </td>
+                      <td className="modellist__name">{m.label}</td>
+                      <td>
+                        <span className={exact ? 'badge badge--exact' : 'badge badge--est'}>{exact ? 'exact' : 'estimate'}</span>
+                      </td>
+                      <td>{perM(m.inputPerM)}</td>
+                      <td>{perM(m.outputPerM)}</td>
+                      <td>{free.has(m.id) ? '✓' : ''}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            );
+          })}
+        </table>
+      </div>
+    </div>
+  );
+}
+
 const KIND_LABEL: Record<Snippet['kind'], string> = {
   command: 'Terminal',
   file: 'File',
@@ -121,7 +241,13 @@ function CodeBlock({ snippet }: { snippet: Snippet }) {
       () => done(false),
     );
   };
-  const lang = snippet.file?.endsWith('.yml') ? 'yaml' : snippet.file ? 'json' : snippet.kind;
+  const lang = snippet.file?.endsWith('.yml')
+    ? 'yaml'
+    : snippet.file?.endsWith('.toml')
+      ? 'toml'
+      : snippet.file
+        ? 'json'
+        : snippet.kind;
 
   return (
     <figure className={`code code--${snippet.kind}`}>
@@ -140,6 +266,7 @@ function CodeBlock({ snippet }: { snippet: Snippet }) {
       <pre className="code__body" tabIndex={0}>
         <code>{snippet.code.split('\n').map((line, i) => <Line key={i} line={line} lang={lang} />)}</code>
       </pre>
+      {snippet.note ? <p className="code__note">{snippet.note}</p> : null}
     </figure>
   );
 }
@@ -182,6 +309,25 @@ function Line({ line, lang }: { line: string; lang: string }) {
         {tint(code)}
         {comment ? <span className="tok-comment">{comment}</span> : null}
       </>
+    );
+  } else if (lang === 'toml') {
+    const section = line.match(/^(\s*)(\[[^\]]+\])(.*)$/);
+    const pair = line.match(/^(\s*)([\w.-]+)(\s*=)(.*)$/);
+    body = section ? (
+      <>
+        {section[1]}
+        <span className="tok-key">{section[2]}</span>
+        {section[3]}
+      </>
+    ) : pair ? (
+      <>
+        {pair[1]}
+        <span className="tok-key">{pair[2]}</span>
+        {pair[3]}
+        {tint(pair[4]!)}
+      </>
+    ) : (
+      tint(line)
     );
   } else if (lang === 'json') {
     body = tint(line, true);

@@ -21,6 +21,14 @@ export interface Snippet {
   /** For kind 'file': the path to save it at. */
   file?: string;
   code: string;
+  /**
+   * Consecutive snippets sharing a group render as one tabbed block, one tab
+   * per distinct `tab` value - six MCP clients as six tabs rather than a wall.
+   */
+  group?: string;
+  tab?: string;
+  /** A line under the block, for a caveat specific to this snippet. */
+  note?: string;
 }
 
 export interface GuideStep {
@@ -37,7 +45,7 @@ export interface GuideStep {
 export const KEY_PLACEHOLDER = 'tt_your_key_here';
 
 export const GUIDE_INTRO = [
-  'tokenticks is the TokenTicks engine as a command-line tool. It checks the prompt files in your repository in a terminal and in CI, comments on pull requests with what a prompt change costs per month, and runs as an MCP server so Claude Code, Cursor or Claude Desktop can count and price prompts mid-conversation.',
+  'tokenticks is the TokenTicks engine as a command-line tool. It checks the prompt files in your repository in a terminal and in CI, comments on pull requests with what a prompt change costs per month, and runs as an MCP server so Codex, Gemini CLI, VS Code, Claude Code, Cursor or any other MCP tool can count and price prompts mid-conversation — for models from OpenAI, Google, Anthropic and six more vendors.',
   'It runs on your machine. Prompts are read and counted locally and never uploaded; the only network call is a licence check, which sends the key and nothing else.',
 ];
 
@@ -118,6 +126,42 @@ jobs:
             if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
             else await github.rest.issues.createComment({ owner, repo, issue_number, body });`;
 
+/** Prompts spread across vendors: each file prices on the model it runs on. */
+export const MIXED_VENDOR_CONFIG = `{
+  "include": ["prompts/**/*.md"],
+  "model": "gpt-5-mini",
+  "callsPerDay": 5000,
+  "files": {
+    "prompts/support-bot.md": { "model": "claude-sonnet-5" },
+    "prompts/summariser.md": { "model": "gemini-2-5-flash" },
+    "prompts/router.md": { "model": "gpt-5-nano", "callsPerDay": 50000 }
+  }
+}`;
+
+export const CODEX_TOML = `[mcp_servers.tokenticks]
+command = "npx"
+args = ["-y", "tokenticks", "mcp"]
+env = { TOKENTICKS_KEY = "${KEY_PLACEHOLDER}" }`;
+
+export const VSCODE_JSON = `{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "tokenticks-key",
+      "description": "TokenTicks key",
+      "password": true
+    }
+  ],
+  "servers": {
+    "tokenticks": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "tokenticks", "mcp"],
+      "env": { "TOKENTICKS_KEY": "\${input:tokenticks-key}" }
+    }
+  }
+}`;
+
 export const MCP_JSON = `{
   "mcpServers": {
     "tokenticks": {
@@ -179,6 +223,44 @@ export const GUIDE_STEPS: GuideStep[] = [
       },
     ],
     notes: ['npx tokenticks --help lists every command and option. npx tokenticks models lists the model ids.'],
+  },
+  {
+    id: 'models',
+    title: 'Price models from any vendor',
+    plan: 'free',
+    intro: [
+      'tokenticks is not tied to one AI company. It prices OpenAI, Anthropic, Google, xAI, DeepSeek, Mistral, Meta, Cohere and Alibaba models from the same list as the dashboard — the full table is below. Use the id in the first column wherever a command or config asks for a model.',
+      'OpenAI counts are exact: OpenAI publishes its tokenizer and it runs here in full. Every other vendor is a calibrated estimate from the same tokenizer, and the output says so. Dated snapshot names such as gpt-4o-mini-2024-07-18 or claude-sonnet-5-20260801 are accepted too.',
+    ],
+    snippets: [
+      {
+        label: 'One prompt, five vendors, cheapest first',
+        kind: 'command',
+        code: 'npx tokenticks compare prompts/support-bot.md --models gpt-5,gemini-2-5-pro,claude-sonnet-5,grok-4,deepseek-v3 --calls-per-day 10000',
+      },
+      {
+        label: 'Count for a specific model',
+        kind: 'command',
+        code: [
+          '# Exact: OpenAI publishes its tokenizer',
+          'npx tokenticks count prompts/system.md --model gpt-5',
+          '',
+          '# Calibrated estimate for Gemini and every other vendor',
+          'npx tokenticks count prompts/system.md --model gemini-2-5-flash',
+        ].join('\n'),
+      },
+      { label: 'Every model id with its rates', kind: 'command', code: 'npx tokenticks models' },
+      {
+        label: 'Prompts that run on different vendors, in one repository',
+        kind: 'file',
+        file: '.tokenticks.json',
+        code: MIXED_VENDOR_CONFIG,
+      },
+    ],
+    notes: [
+      'The free plan prices five models (marked in the table); counts work for all of them. Pro and Team price every model.',
+      'Using Codex or GitHub Copilot? They run on OpenAI models, so price your prompts with the OpenAI ids. Vendor variants that are not in the table, such as coding-tuned models, are not priced yet.',
+    ],
   },
   {
     id: 'config',
@@ -244,30 +326,85 @@ export const GUIDE_STEPS: GuideStep[] = [
   },
   {
     id: 'mcp',
-    title: 'Use it inside your AI editor (MCP)',
+    title: 'Use it inside your AI tool (MCP)',
     plan: 'free',
     intro: [
-      'As an MCP server, tokenticks gives your assistant tools to count, compare and — on Pro — trim and check cache order, without you pasting prompts anywhere. It reads files only inside the folder it was started in.',
+      'MCP is an open standard, so tokenticks works in any tool that supports it — OpenAI Codex, Gemini CLI, VS Code with GitHub Copilot, Claude Code, Cursor and Claude Desktop among them. It gives your assistant tools to count, compare and — on Pro — trim and check cache order, without you pasting prompts anywhere. It reads files only inside the folder it was started in.',
+      'Pick your tool. Where there are two ways, either one is enough.',
     ],
     snippets: [
       {
-        label: 'Claude Code',
+        group: 'mcp-client',
+        tab: 'Codex',
+        label: 'Add it with one command',
+        kind: 'command',
+        code: `codex mcp add tokenticks --env TOKENTICKS_KEY=${KEY_PLACEHOLDER} -- npx -y tokenticks mcp`,
+      },
+      {
+        group: 'mcp-client',
+        tab: 'Codex',
+        label: 'Or add it to the config file',
+        kind: 'file',
+        file: '~/.codex/config.toml',
+        code: CODEX_TOML,
+        note: 'The same config serves the Codex CLI and the Codex IDE extension.',
+      },
+      {
+        group: 'mcp-client',
+        tab: 'Gemini CLI',
+        label: 'Add it with one command',
+        kind: 'command',
+        code: `gemini mcp add -s user -e TOKENTICKS_KEY=${KEY_PLACEHOLDER} tokenticks npx tokenticks mcp`,
+      },
+      {
+        group: 'mcp-client',
+        tab: 'Gemini CLI',
+        label: 'Or add it to the settings file',
+        kind: 'file',
+        file: '~/.gemini/settings.json',
+        code: MCP_JSON,
+        note: 'Put the key in "env" as shown. Gemini CLI withholds environment variables with KEY in the name from MCP servers unless they are set there, so an exported TOKENTICKS_KEY alone would not reach tokenticks.',
+      },
+      {
+        group: 'mcp-client',
+        tab: 'VS Code',
+        label: 'Workspace config (GitHub Copilot agent mode)',
+        kind: 'file',
+        file: '.vscode/mcp.json',
+        code: VSCODE_JSON,
+        note: 'VS Code asks for the key the first time the server starts and stores it securely, so the key never sits in a file you might commit. For every workspace, run "MCP: Open User Configuration" and paste the same config there.',
+      },
+      {
+        group: 'mcp-client',
+        tab: 'Claude Code',
+        label: 'Add it with one command',
         kind: 'command',
         code: `claude mcp add tokenticks -e TOKENTICKS_KEY=${KEY_PLACEHOLDER} -- npx -y tokenticks mcp`,
       },
-      { label: 'Cursor', kind: 'file', file: '.cursor/mcp.json', code: MCP_JSON },
-      { label: 'Claude Desktop', kind: 'file', file: 'claude_desktop_config.json', code: MCP_JSON },
+      { group: 'mcp-client', tab: 'Cursor', label: 'Project config', kind: 'file', file: '.cursor/mcp.json', code: MCP_JSON },
+      {
+        group: 'mcp-client',
+        tab: 'Claude Desktop',
+        label: 'App config',
+        kind: 'file',
+        file: 'claude_desktop_config.json',
+        code: MCP_JSON,
+        note: 'Open it from Claude Desktop: Settings → Developer → Edit Config.',
+      },
       {
         label: 'Then ask things like',
         kind: 'output',
         code: [
-          'What does prompts/support-bot.md cost on Opus 5 against Haiku 4.5 at 10k calls a day?',
+          'Compare prompts/support-bot.md on GPT-5, Gemini 2.5 Pro and Claude Sonnet 5 at 10k calls a day.',
           'Why isn\'t my prompt cache hitting on prompts/agent.md?',
           'Trim prompts/system.md and show me what it would save.',
         ].join('\n'),
       },
     ],
-    notes: ['Restart the editor after adding the server. The tools appear as count_tokens, compare_models, list_models, trim_prompt, cache_lint and cache_roi.'],
+    notes: [
+      'Restart the tool after adding the server. The tools appear as count_tokens, compare_models, list_models, trim_prompt, cache_lint and cache_roi.',
+      'Any other MCP client works the same way: have it run npx -y tokenticks mcp with TOKENTICKS_KEY in its environment.',
+    ],
   },
   {
     id: 'manage',

@@ -8,7 +8,7 @@ pull requests, and inside your AI editor over MCP. The same engine as the
 ```sh
 npx tokenticks lint                 # check prompt files against budgets and waste rules
 npx tokenticks diff --base origin/main   # monthly cost change of your prompt edits
-npx tokenticks mcp                  # MCP server for Claude Code, Cursor, Claude Desktop
+npx tokenticks mcp                  # MCP server for Codex, Gemini CLI, VS Code, Claude Code, Cursor…
 ```
 
 ## What each plan runs
@@ -144,6 +144,53 @@ upsell. Pull requests from forks don't receive secrets, so they run on the free 
 
 ## As an MCP server
 
+MCP is an open standard, so this works in any MCP client. The server command is
+always `npx -y tokenticks mcp` with `TOKENTICKS_KEY` in its environment.
+
+**OpenAI Codex** (CLI and IDE extension)
+
+```sh
+codex mcp add tokenticks --env TOKENTICKS_KEY=tt_… -- npx -y tokenticks mcp
+```
+
+or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.tokenticks]
+command = "npx"
+args = ["-y", "tokenticks", "mcp"]
+env = { TOKENTICKS_KEY = "tt_…" }
+```
+
+**Gemini CLI**
+
+```sh
+gemini mcp add -s user -e TOKENTICKS_KEY=tt_… tokenticks npx tokenticks mcp
+```
+
+or `mcpServers` in `~/.gemini/settings.json`, same shape as the Cursor example
+below. Keep the key in `env`: Gemini CLI withholds environment variables with
+`KEY` in the name from MCP servers unless they are set there.
+
+**VS Code** (GitHub Copilot agent mode), `.vscode/mcp.json`: VS Code prompts
+for the key once and stores it securely, so it never lands in the repository.
+
+```json
+{
+  "inputs": [
+    { "type": "promptString", "id": "tokenticks-key", "description": "TokenTicks key", "password": true }
+  ],
+  "servers": {
+    "tokenticks": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "tokenticks", "mcp"],
+      "env": { "TOKENTICKS_KEY": "${input:tokenticks-key}" }
+    }
+  }
+}
+```
+
 **Claude Code**
 
 ```sh
@@ -164,8 +211,8 @@ claude mcp add tokenticks -e TOKENTICKS_KEY=tt_… -- npx -y tokenticks mcp
 }
 ```
 
-Then ask things like *"what does prompts/system.md cost on Opus 5 against Haiku
-4.5 at 10k calls a day?"* or *"why isn't my prompt cache hitting?"*. The
+Then ask things like *"compare prompts/system.md on GPT-5, Gemini 2.5 Pro and
+Claude Sonnet 5 at 10k calls a day"* or *"why isn't my prompt cache hitting?"*. The
 server reads files only under the directory it was started in, and the default
 model comes from `.tokenticks.json` there.
 

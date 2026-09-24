@@ -23,8 +23,9 @@ export function DevToolsPage({ onKeys, onBack }: { onKeys: (() => void) | null; 
           <h1 className="pagehead__title">CLI, CI checks and MCP, set up in ten minutes</h1>
           <p className="pagehead__lede">
             Run the TokenTicks engine where your prompts live: in a terminal, in every pull
-            request, and inside Claude Code, Cursor or Claude Desktop. Each step below has the
-            exact commands and files to copy.
+            request, and inside Codex, Gemini CLI, VS Code, Claude Code, Cursor or any other MCP
+            tool. It prices models from OpenAI, Google, Anthropic and six more vendors. Each step
+            below has the exact commands and files to copy.
           </p>
         </div>
       </header>

@@ -263,7 +263,7 @@ export const FEATURE_DOCS: FeatureDoc[] = [
     art: 'trim',
     shot: null,
     what: [
-      'The tokenticks command-line tool runs this engine against the prompt files in your repository: in a terminal, in CI, and — as an MCP server — inside Claude Code, Cursor or Claude Desktop, so an assistant can answer “what does this prompt cost on Haiku instead?” mid-conversation.',
+      'The tokenticks command-line tool runs this engine against the prompt files in your repository: in a terminal, in CI, and — as an MCP server — inside Codex, Gemini CLI, VS Code, Claude Code, Cursor or any other MCP tool, so an assistant can answer “what does this prompt cost on Haiku instead?” mid-conversation.',
       'It runs on your machine. Prompts are read and counted locally and never uploaded; the only network call is a licence check, cached for 12 hours.',
     ],
     how: [

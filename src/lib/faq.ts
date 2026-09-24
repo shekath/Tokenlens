@@ -103,7 +103,7 @@ export const FAQ: FaqSection[] = [
       {
         q: 'Is there a command-line tool or an MCP server?',
         a: [
-          'Yes: tokenticks. It lints prompt files in CI, comments on pull requests with the monthly cost of a prompt change (Team), and runs as an MCP server so Claude Code, Cursor or Claude Desktop can count and price prompts mid-conversation.',
+          'Yes: tokenticks. It lints prompt files in CI, comments on pull requests with the monthly cost of a prompt change (Team), and runs as an MCP server so Codex, Gemini CLI, VS Code, Claude Code, Cursor or any other MCP tool can count and price prompts mid-conversation. It prices models from every vendor on the dashboard, not just one.',
           'Create a key under the profile menu → CLI & MCP keys, and set it as TOKENTICKS_KEY.',
         ],
       },

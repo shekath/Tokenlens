@@ -92,7 +92,9 @@ textarea {
   margin-left: 2px;
 }
 
-@media (max-width: 560px) {
+/* The tagline is the first thing to go when the top bar runs short: below
+   1200px it is what pushes the menu onto a second row. */
+@media (max-width: 1200px) {
   .brand__sub {
     display: none;
   }
@@ -1824,6 +1826,14 @@ table.data tbody tr.is-on td:first-child {
   cursor: pointer;
 }
 
+/* Four page links plus the controls come to within a few pixels of a tablet's
+   width; tighter padding keeps the theme buttons from dropping to a third row. */
+@media (max-width: 900px) {
+  .navlink {
+    padding: 0 7px;
+  }
+}
+
 .navlink:hover {
   background: var(--surface-hover);
   color: var(--text-primary);
@@ -2529,4 +2539,94 @@ table.data tbody tr.is-on td:first-child {
 
 .tok-word {
   white-space: nowrap;
+}
+
+/* Tool picker for snippets that differ per client (the MCP setup). */
+.snippettabs {
+  margin-top: 12px;
+}
+
+.snippettabs__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.snippettabs__tab {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.snippettabs__tab:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.snippettabs__tab.is-on {
+  border-color: var(--series-1);
+  background: var(--series-1);
+  color: #ffffff;
+}
+
+.snippettabs__tab:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+.code__note {
+  margin: 0;
+  padding: 9px 14px 11px;
+  border-top: 1px solid #2c3038;
+  color: #c9c7c1;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.code--output .code__note {
+  border-top: 1px dashed var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.modellist {
+  margin-top: 14px;
+}
+
+.modellist__head {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.modellist__table td,
+.modellist__table th {
+  white-space: nowrap;
+}
+
+.modellist__id {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.modellist__vendor th {
+  padding-top: 14px;
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* On a phone the id already names the model; the rates are what need the room. */
+@media (max-width: 560px) {
+  .modellist__name {
+    display: none;
+  }
 }

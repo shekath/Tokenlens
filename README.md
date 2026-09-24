@@ -181,8 +181,8 @@ Parsed in the browser. Engine: `src/lib/reconcile.ts`.
 The same engine as an npm package, `tokenticks`: `lint` for prompt files in CI
 (budgets on every plan; Trimmer and cache-order checks on Pro; a team's own rule
 levels on Team), `diff` for a pull-request comment with the monthly cost of a
-prompt change (Team), and `mcp`, a stdio MCP server for Claude Code, Cursor and
-Claude Desktop. It runs locally and never uploads a prompt. Plans come from
+prompt change (Team), and `mcp`, a stdio MCP server for any MCP client (Codex, Gemini CLI, VS Code,
+Claude Code, Cursor, Claude Desktop). It runs locally and never uploads a prompt. Plans come from
 licence keys (profile menu → CLI & MCP keys; migration `0011_cli_keys.sql`),
 checked against the live tier, cached for 12 hours, with a 7-day grace period —
 and a licence problem never changes an exit code. See `cli/README.md`.
