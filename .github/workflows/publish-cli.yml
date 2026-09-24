@@ -1,0 +1,145 @@
+# Publishes the tokenticks CLI (cli/) to npm.
+#
+# Release: bump the version in cli/package.json, commit, then push a matching tag:
+#
+#   cd cli && npm version patch --no-git-tag-version   # 0.1.0 -> 0.1.1
+#   git commit -am "tokenticks 0.1.1" && git push
+#   git tag cli-v0.1.1 && git push origin cli-v0.1.1
+#
+# Or run it by hand from the Actions tab (once this file is on the default
+# branch) - by default that is a dry run that publishes nothing.
+#
+# Needs, under Settings -> Secrets and variables -> Actions:
+#   Secrets:   NPM_TOKEN               an npm "Automation" or granular token with publish rights
+#   Variables: VITE_SUPABASE_URL       the same two the site build already uses
+#              VITE_SUPABASE_ANON_KEY
+name: Publish CLI to npm
+
+on:
+  push:
+    tags: ["cli-v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: build and pack, but do not publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  # For npm provenance: a signed statement of which repository and workflow
+  # built the package. Only generated for a public repository - see below.
+  id-token: write
+
+# Two releases racing each other would each pass the "not yet published" check.
+concurrency:
+  group: publish-cli
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      # Set for every step, not just the build: `npm publish` runs the
+      # package's prepublishOnly script, which rebuilds - and a rebuild without
+      # these would quietly ship a CLI with no licence server, stuck on free.
+      # Both are public by design (they ship in the site's bundle too). Never
+      # the service-role key.
+      VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Check configuration
+        run: |
+          fail=0
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "::error::VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set as repository Variables (not Secrets). Without them the published CLI cannot check licences and every user is stuck on the free plan."
+            fail=1
+          fi
+          # The service-role key is a JWT whose payload says so. Refuse it: it
+          # would be printed into a public npm package.
+          payload="$(printf '%s' "$VITE_SUPABASE_ANON_KEY" | cut -d. -f2 | tr '_-' '/+')"
+          while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="${payload}="; done
+          if printf '%s' "$payload" | base64 -d 2>/dev/null | grep -q '"role":"service_role"'; then
+            echo "::error::VITE_SUPABASE_ANON_KEY holds a service_role key. Never publish that; use the anon key."
+            fail=1
+          fi
+          exit $fail
+
+      - name: Check version
+        id: version
+        run: |
+          version="$(node -p "require('./cli/package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "cli-v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match cli/package.json version $version. Tag cli-v$version, or bump the version first."
+            exit 1
+          fi
+          # npm refuses a version twice, with an unhelpful 403. Say it plainly.
+          if npm view "tokenticks@$version" version >/dev/null 2>&1; then
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "::warning::tokenticks@$version is already on npm; a real publish of this version would be refused."
+            else
+              echo "::error::tokenticks@$version is already published. Bump cli/package.json and tag again."
+              exit 1
+            fi
+          fi
+          echo "Publishing tokenticks@$version"
+
+      - name: Install
+        run: npm ci
+
+      # The full suite, not just the CLI's: the CLI bundles the app's engine
+      # modules, so a regression there ships in the package too. The MCP tests
+      # also drive the freshly built binary with the official SDK client.
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: node cli/build.mjs
+
+      - name: Verify the bundle
+        run: |
+          bundle=cli/dist/tokenticks.mjs
+          if ! grep -qF "$VITE_SUPABASE_URL" "$bundle"; then
+            echo "::error::The built CLI does not contain the licence server URL; the build did not pick up VITE_SUPABASE_URL."
+            exit 1
+          fi
+          test "$(node "$bundle" --version)" = "${{ steps.version.outputs.version }}"
+          echo "hello world" | node "$bundle" count --model gpt-5
+          (cd cli && npm pack --dry-run)
+
+      - name: Publish
+        working-directory: cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # npm only generates provenance for a public source repository.
+          PROVENANCE: ${{ github.event.repository.private == false && '--provenance' || '' }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            npm publish --dry-run --access public
+            echo "Dry run: nothing was published."
+            exit 0
+          fi
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::The NPM_TOKEN secret is not set."
+            exit 1
+          fi
+          npm publish --access public $PROVENANCE
+
+      - name: Summary
+        if: success()
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run of tokenticks@$v passed. Nothing was published." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Published [tokenticks@$v](https://www.npmjs.com/package/tokenticks/v/$v). Try it: \`npx tokenticks@$v --version\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
