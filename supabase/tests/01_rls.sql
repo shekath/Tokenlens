@@ -910,4 +910,175 @@ end $$;
 select test_reset();
 
 \echo ''
+\echo '== CLI licence keys: hashed, owner-scoped, and resolving to the live tier =='
+
+select test_grant_tier('11111111-1111-1111-1111-111111111111', 'free');
+
+-- Without a session there is no account to mint a key for.
+select test_as_anon();
+do $$
+declare
+  refused boolean := false;
+begin
+  begin
+    perform public.create_cli_key('anon');
+  exception
+    when insufficient_privilege then refused := true;
+  end;
+  perform assert(refused, 'an anonymous caller cannot mint a key');
+end $$;
+
+select test_as_user('11111111-1111-1111-1111-111111111111');
+select public.create_cli_key('  Laptop  ') as alice_key \gset
+
+select assert(:'alice_key' ~ '^tt_[0-9a-f]{64}$', 'a key is tt_ and 64 hex characters');
+select assert(
+  (select count(*) from public.cli_keys) = 1
+    and (select label from public.cli_keys) = 'Laptop'
+    and (select key_prefix from public.cli_keys) = left(:'alice_key', 9),
+  'the owner sees one row, label trimmed, with a short display prefix'
+);
+select assert(
+  (select key_hash from public.cli_keys) = encode(sha256(convert_to(:'alice_key', 'UTF8')), 'hex')
+    and not exists (
+      select 1 from public.cli_keys k where to_jsonb(k)::text like '%' || substr(:'alice_key', 4) || '%'
+    ),
+  'only the SHA-256 is stored; the key itself appears in no column'
+);
+
+do $$
+declare
+  refused integer := 0;
+begin
+  begin
+    insert into public.cli_keys (user_id, label, key_prefix, key_hash)
+    values ('11111111-1111-1111-1111-111111111111', 'Chosen', 'tt_000000', repeat('0', 64));
+  exception when insufficient_privilege then refused := refused + 1;
+  end;
+  begin
+    update public.cli_keys set revoked_at = null;
+  exception when insufficient_privilege then refused := refused + 1;
+  end;
+  perform assert(refused = 2, 'nobody inserts or updates a key row directly: a chosen key, or an un-revoke');
+end $$;
+
+select test_as_anon();
+select assert(
+  (select tier from public.check_cli_key(:'alice_key')) = 'free'
+    and (select public_id from public.check_cli_key(:'alice_key'))
+        = (select public_id from public.profiles where id = '11111111-1111-1111-1111-111111111111'),
+  'the anon key alone can check a licence key, and gets the account''s tier and reference'
+);
+select assert(
+  (select count(*) from public.check_cli_key('tt_' || repeat('a', 64))) = 0
+    and (select count(*) from public.check_cli_key('not a key')) = 0
+    and (select count(*) from public.check_cli_key(null)) = 0,
+  'unknown, malformed and null keys all return nothing, indistinguishably'
+);
+
+select test_reset();
+select assert(
+  (select last_used_at from public.cli_keys where key_prefix = left(:'alice_key', 9)) is not null,
+  'a successful check records when the key was last used'
+);
+
+-- The tier is read live, so an upgrade needs no new key and a lapse needs no revocation.
+select test_grant_tier('11111111-1111-1111-1111-111111111111', 'team');
+select test_as_anon();
+select assert(
+  (select tier from public.check_cli_key(:'alice_key')) = 'team',
+  'the same key reports Team after an upgrade'
+);
+select test_reset();
+select test_grant_tier('11111111-1111-1111-1111-111111111111', 'free');
+select test_as_anon();
+select assert(
+  (select tier from public.check_cli_key(:'alice_key')) = 'free',
+  'and free again once the subscription is gone'
+);
+
+-- Bob is handed Alice's real key id, as if it had leaked: seeing it must not be
+-- enough to revoke it.
+select test_reset();
+select id as alice_key_id from public.cli_keys where key_prefix = left(:'alice_key', 9) \gset
+select test_as_user('22222222-2222-2222-2222-222222222222');
+select assert(
+  (select count(*) from public.cli_keys) = 0,
+  'one account cannot see another''s keys'
+);
+select assert(
+  not public.revoke_cli_key(:'alice_key_id'::uuid)
+    and not public.revoke_cli_key(gen_random_uuid()),
+  'nor revoke them, even holding the id'
+);
+
+select test_reset();
+select assert(
+  (select revoked_at from public.cli_keys where key_prefix = left(:'alice_key', 9)) is null,
+  'the attempted cross-account revoke changed nothing'
+);
+
+select test_as_user('11111111-1111-1111-1111-111111111111');
+select assert(
+  public.revoke_cli_key((select id from public.cli_keys where key_prefix = left(:'alice_key', 9))),
+  'the owner can revoke their key'
+);
+select assert(
+  not public.revoke_cli_key((select id from public.cli_keys where key_prefix = left(:'alice_key', 9))),
+  'revoking twice reports false rather than succeeding again'
+);
+select test_as_anon();
+select assert(
+  (select count(*) from public.check_cli_key(:'alice_key')) = 0,
+  'a revoked key stops resolving immediately'
+);
+
+select test_as_user('11111111-1111-1111-1111-111111111111');
+select public.create_cli_key('k' || n) from generate_series(1, 10) as n;
+do $$
+declare
+  refused boolean := false;
+begin
+  begin
+    perform public.create_cli_key('eleventh');
+  exception
+    when program_limit_exceeded then refused := true;
+  end;
+  perform assert(refused, 'ten active keys is the cap; revoked keys do not count toward it');
+end $$;
+
+do $$
+declare
+  refused boolean := false;
+begin
+  -- Revoke one to get under the cap, so the label check is what refuses.
+  perform public.revoke_cli_key((select id from public.cli_keys where label = 'k1'));
+  begin
+    perform public.create_cli_key('   ');
+  exception
+    when check_violation then refused := true;
+  end;
+  perform assert(refused, 'a blank label is refused');
+end $$;
+
+-- Deleting the account takes its keys with it.
+select test_reset();
+insert into auth.users (id, email) values ('55555555-5555-5555-5555-555555555555', 'erin@example.com');
+select test_as_user('55555555-5555-5555-5555-555555555555');
+select public.create_cli_key('Doomed') as erin_key \gset
+select test_reset();
+delete from auth.users where id = '55555555-5555-5555-5555-555555555555';
+select assert(
+  not exists (select 1 from public.cli_keys where user_id = '55555555-5555-5555-5555-555555555555'),
+  'deleting an account deletes its keys'
+);
+select test_as_anon();
+select assert(
+  (select count(*) from public.check_cli_key(:'erin_key')) = 0,
+  'and a deleted account''s key no longer resolves'
+);
+
+select test_reset();
+
+\echo ''
 \echo 'All RLS assertions passed.'

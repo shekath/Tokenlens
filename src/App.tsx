@@ -61,6 +61,16 @@ const BatchForecaster = lazy(() =>
     default: m.BatchForecaster,
   })),
 );
+const CacheOrder = lazy(() =>
+  retryImport(() => import('./components/CacheOrder'), 'Cache order').then((m) => ({
+    default: m.CacheOrder,
+  })),
+);
+const Reconcile = lazy(() =>
+  retryImport(() => import('./components/Reconcile'), 'Reconcile').then((m) => ({
+    default: m.Reconcile,
+  })),
+);
 const ProposalBuilder = lazy(() =>
   retryImport(() => import('./components/ProposalBuilder'), 'Proposal').then((m) => ({
     default: m.ProposalBuilder,
@@ -90,7 +100,7 @@ const COMPOSITION_COLORS = [
   'var(--series-5)',
 ];
 
-type TabId = 'analyse' | 'cache' | 'trimmer' | 'batch' | 'proposal' | 'saved';
+type TabId = 'analyse' | 'cache' | 'order' | 'trimmer' | 'batch' | 'proposal' | 'reconcile' | 'saved';
 
 interface TabDef {
   id: TabId;
@@ -115,6 +125,21 @@ const TABS: TabDef[] = [
         'Break-even hit rate for any model that publishes cache rates',
         'How many calls a cache entry must serve before it pays for itself',
         'Cost curves from 100 to 1,000,000 invocations',
+      ],
+    },
+  },
+  {
+    id: 'order',
+    label: 'Cache order',
+    feature: 'cacheLinter',
+    gate: {
+      title: 'Find out why your prompt cache is not hitting',
+      pitch:
+        'Caching is a prefix match: one timestamp, request id or template variable near the top stops everything after it from caching. This finds those values, measures the tokens they lock out, and prices the loss.',
+      bullets: [
+        'Timestamps, dates, UUIDs, hex ids and template placeholders, by line',
+        'Cacheable prefix now against after reordering, in tokens and dollars a month',
+        'A reordered prompt with per-call values last, blocks kept whole',
       ],
     },
   },
@@ -160,6 +185,21 @@ const TABS: TabDef[] = [
         'Your company and client details on the cover',
         'Every model you are comparing, with and without caching',
         'Rendered locally — the project never leaves your machine',
+      ],
+    },
+  },
+  {
+    id: 'reconcile',
+    label: 'Reconcile',
+    feature: 'usageReconcile',
+    gate: {
+      title: 'See where the bill and the plan parted ways',
+      pitch:
+        'Drop in a usage export from your provider and set it against the estimates you saved: not just how far off you were, but whether it was more calls, bigger prompts, longer answers or a model nobody planned for.',
+      bullets: [
+        'Parsed in your browser, never uploaded',
+        'Variance split into volume and per-call effects that add up exactly',
+        'Unplanned models and unused estimates called out by name',
       ],
     },
   },
@@ -377,11 +417,13 @@ export default function App() {
           charsPerToken: Number(tok.charsPerToken.toFixed(3)),
           exact,
           encoding: FAMILY_INFO[model.tokenizer].encoding,
+          // So Reconcile can compare against the volume this estimate assumed.
+          callsPerDay: assumptions.callsPerDay,
         },
       };
 
   const openPricing = useCallback(() => setPricingOpen(true), []);
-  const showComposer = tab === 'analyse' || tab === 'trimmer';
+  const showComposer = tab === 'analyse' || tab === 'trimmer' || tab === 'order';
   const showAssumptions = tab === 'analyse' || tab === 'proposal';
 
   return (
@@ -609,6 +651,16 @@ export default function App() {
                     onModel={setModelId}
                     seedFreshTokens={tokens}
                   />
+                ) : t.id === 'order' ? (
+                  <CacheOrder
+                    text={deferredText}
+                    model={model}
+                    countTokens={countTokens}
+                    callsPerDay={assumptions.callsPerDay}
+                    onApply={setText}
+                  />
+                ) : t.id === 'reconcile' ? (
+                  <Reconcile userId={auth.user?.id ?? null} defaultCallsPerDay={assumptions.callsPerDay} />
                 ) : t.id === 'trimmer' ? (
                   <TokenTrimmer text={deferredText} model={model} countTokens={countTokens} onApply={setText} />
                 ) : t.id === 'batch' ? (

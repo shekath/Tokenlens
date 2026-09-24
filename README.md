@@ -144,6 +144,15 @@ Rules are individually toggleable and split into "safe to remove" and "read
 before accepting". Nothing touches a number, a proper noun, a constraint or a
 negation.
 
+### Cache order — Pro
+
+Why a prompt cache that should be hitting is not. Caching is a prefix match, so
+one per-call value — a timestamp, a UUID, a `{{template}}` variable — ends the
+cacheable part however stable the rest is. The tab finds those values (by line,
+at two confidence levels, each dismissible), measures the cacheable prefix now
+and after moving them last, prices the difference at your call volume, and
+offers a reordered prompt with blocks kept whole. Engine: `src/lib/cacheability.ts`.
+
 ### Batch — Pro
 
 Drop in a CSV, JSONL or NDJSON file, pick the prompt column (it guesses), and get
@@ -156,6 +165,27 @@ uploading them to do that would be a worse promise.
 The current comparison as a branded PDF: recommended model, monthly cost per
 model with and without caching, and the assumptions behind both. Rendered
 locally with jsPDF.
+
+### Reconcile — Team
+
+A provider usage export set against saved estimates. Columns are detected by
+name and shown for correction; model names match exactly after stripping vendor
+prefixes and snapshot dates (never by prefix, so a similar model's rate is never
+borrowed); and whether "input tokens" already contains cached reads is a named
+option, defaulted per vendor. The variance splits into a volume effect and a
+per-call effect that add up exactly, and the causes are named in plain language.
+Parsed in the browser. Engine: `src/lib/reconcile.ts`.
+
+### CLI, CI checks and MCP server — `cli/`
+
+The same engine as an npm package, `tokenticks`: `lint` for prompt files in CI
+(budgets on every plan; Trimmer and cache-order checks on Pro; a team's own rule
+levels on Team), `diff` for a pull-request comment with the monthly cost of a
+prompt change (Team), and `mcp`, a stdio MCP server for Claude Code, Cursor and
+Claude Desktop. It runs locally and never uploads a prompt. Plans come from
+licence keys (profile menu → CLI & MCP keys; migration `0011_cli_keys.sql`),
+checked against the live tier, cached for 12 hours, with a 7-day grace period —
+and a licence problem never changes an exit code. See `cli/README.md`.
 
 ### Accounts
 

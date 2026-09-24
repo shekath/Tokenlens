@@ -81,6 +81,18 @@ type SupportTicketRow = {
   created_at: string;
 };
 
+/** A CLI / MCP licence key, as migration 0011 stores it: never the key, only its hash. */
+type CliKeyRow = {
+  id: string;
+  user_id: string;
+  label: string;
+  key_prefix: string;
+  key_hash: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+};
+
 type SharedEstimateRow = {
   share_slug: string;
   project_title: string;
@@ -132,6 +144,15 @@ export interface Database {
         Update: Partial<Pick<SupportTicketRow, 'status'>>;
         Relationships: [];
       };
+      cli_keys: {
+        Row: CliKeyRow;
+        // Every write goes through create_cli_key / revoke_cli_key; INSERT and
+        // UPDATE are revoked from clients in migration 0011. These types only
+        // describe the shape, and `never`-free so the schema does not collapse.
+        Insert: Pick<CliKeyRow, 'user_id' | 'label' | 'key_prefix' | 'key_hash'>;
+        Update: Partial<Pick<CliKeyRow, 'revoked_at'>>;
+        Relationships: [];
+      };
     };
     Views: {
       shared_estimates: {
@@ -145,6 +166,14 @@ export interface Database {
       get_shared_estimate: {
         Args: { slug: string };
         Returns: SharedEstimateRow[];
+      };
+      create_cli_key: {
+        Args: { p_label: string };
+        Returns: string;
+      };
+      revoke_cli_key: {
+        Args: { p_id: string };
+        Returns: boolean;
       };
     };
     Enums: {

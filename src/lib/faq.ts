@@ -96,6 +96,39 @@ export const FAQ: FaqSection[] = [
     ],
   },
   {
+    id: 'developers',
+    title: 'CLI, CI and MCP',
+    blurb: 'Running the engine in your repository, your pipeline and your editor.',
+    items: [
+      {
+        q: 'Is there a command-line tool or an MCP server?',
+        a: [
+          'Yes: tokenticks. It lints prompt files in CI, comments on pull requests with the monthly cost of a prompt change (Team), and runs as an MCP server so Claude Code, Cursor or Claude Desktop can count and price prompts mid-conversation.',
+          'Create a key under the profile menu → CLI & MCP keys, and set it as TOKENTICKS_KEY.',
+        ],
+      },
+      {
+        q: 'Does the CLI upload my prompts?',
+        a: [
+          'No. It runs the same engine as this page, on your machine. The only network call is the licence check: the key goes to our database, the prompt never does.',
+        ],
+      },
+      {
+        q: 'Can a licence problem break my build?',
+        a: [
+          'No. The plan is checked once and cached for 12 hours; if our server cannot be reached, the last confirmed plan is used for up to seven days, and after that the tool runs with free features and prints a warning.',
+          'Exit codes come only from the checks you configured. A revoked or mistyped key downgrades features; it never turns a build red.',
+        ],
+      },
+      {
+        q: 'What happens to a key when I cancel or delete my account?',
+        a: [
+          'A key reports your plan as it is now, not as it was when the key was made — cancel and it reports free once the paid period ends, upgrade and the same key picks up the new plan. Deleting your account deletes its keys.',
+        ],
+      },
+    ],
+  },
+  {
     id: 'subscription',
     title: 'Plans and billing',
     blurb: 'What each plan includes, and exactly what happens when you change one.',
@@ -104,6 +137,7 @@ export const FAQ: FaqSection[] = [
         q: 'What do I get for free?',
         a: [
           'Unlimited token counting with no account, five foundational OpenAI and Anthropic models priced, the composition metrics, and up to three saved estimates.',
+          'The tokenticks command-line tool and MCP server also work without a key: token counts for every model, prices for the free five, and per-file budgets in CI.',
         ],
       },
       {

@@ -106,6 +106,16 @@ for (const cfg of CONFIGS) {
   for (const name of tabs) {
     await page.getByRole('tab', { name, exact: true }).click();
     await page.waitForTimeout(650);
+    // Two tabs are empty states until given something to chew on; measure
+    // them with content, which is the layout that can actually overflow.
+    if (name.trim() === 'Cache order') {
+      await page.fill('#prompt', `Current time: 2026-09-24T10:15:00Z\nRequest id: 3f2c9a1e-8b7d-4c6e-9f10-2a3b4c5d6e7f\n\n${SAMPLE}`);
+      await page.waitForTimeout(700);
+    }
+    if (name.trim() === 'Reconcile') {
+      await page.getByRole('button', { name: 'Try a sample' }).click();
+      await page.waitForTimeout(500);
+    }
     await measure(name.trim());
     if (OUT) {
       const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -113,6 +123,7 @@ for (const cfg of CONFIGS) {
     }
   }
   await page.getByRole('tab', { name: tabs[0], exact: true }).click();
+  await page.fill('#prompt', SAMPLE);
   await page.waitForTimeout(400);
 
   // The Docs and FAQ routes are hash routes over the same document, so they
