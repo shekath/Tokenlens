@@ -439,7 +439,8 @@ export function AnalyseTab({
             </button>
           </div>
           <p className="section__note">
-            Sort by any column. Selecting a row moves the whole dashboard to that model.
+            Search by name, filter by company, sort by any column. Selecting a row moves the
+            whole dashboard to that model.
           </p>
           <div className="card">
             <ModelTable rows={rows} selectedId={model.id} onSelect={setModelId} assumptions={assumptions} base={base} />

@@ -2630,3 +2630,91 @@ table.data tbody tr.is-on td:first-child {
     display: none;
   }
 }
+
+/* ===================================================== model table filter === */
+
+.modelfilter {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.modelfilter__search {
+  position: relative;
+  max-width: 420px;
+}
+
+.modelfilter__search .input {
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: 32px;
+}
+
+.modelfilter__icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.modelfilter__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.chip.is-on {
+  border-color: var(--series-1);
+  background: var(--series-1);
+  color: #ffffff;
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+.chip__count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.modelfilter__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.linkbtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--series-1);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
