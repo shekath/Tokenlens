@@ -1,6 +1,6 @@
 {
   "name": "tokenticks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Token counts and LLM cost checks for prompts in your repo: a CI linter, pull-request cost diffs, and an MCP server. Runs locally; prompts are never uploaded.",
   "type": "module",
   "bin": {

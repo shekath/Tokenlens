@@ -180,3 +180,24 @@ Without the two variables the build works but has no licence server, so every
 command runs on the free plan. Rates are list prices as of the date `tokenticks
 models` prints; token counts are exact for OpenAI models and calibrated
 estimates elsewhere (Anthropic, for one, publishes no client tokenizer).
+
+## Releasing
+
+Releases are published by `.github/workflows/publish-cli.yml` when a tag
+`cli-v<version>` is pushed. It needs an `NPM_TOKEN` repository **secret** and the
+same `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` repository **variables** the
+site build uses.
+
+```sh
+cd cli && npm version patch --no-git-tag-version     # e.g. 0.1.0 -> 0.1.1
+cd .. && git commit -am "tokenticks 0.1.1" && git push
+git tag cli-v0.1.1 && git push origin cli-v0.1.1
+```
+
+Before publishing, the workflow refuses to continue if the tag doesn't match
+`cli/package.json`, if the version is already on npm, if the Supabase variables
+are missing, if the key is a service-role key, or if the built bundle lacks the
+licence server. It runs the full test suite, including the MCP interop tests, then
+publishes with npm provenance when the repository is public. Run it by hand from
+the Actions tab for a dry run that publishes nothing.
+
