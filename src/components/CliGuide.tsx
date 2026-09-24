@@ -8,7 +8,8 @@ import {
 } from '../lib/cliGuide';
 
 /**
- * The developer guide: CLI, CI and MCP, step by step.
+ * The developer guide: CLI, CI and MCP, step by step. The body of the Dev
+ * tools page, which supplies the heading.
  *
  * Every snippet is its own block with a header saying what it is - a command
  * for a terminal, a file and the path to save it at, or output to expect - and
@@ -17,11 +18,7 @@ import {
  */
 export function CliGuide({ onKeys }: { onKeys: (() => void) | null }) {
   return (
-    <section id="doc-cli-guide" className="doc guide" aria-labelledby="guide-title">
-      <p className="pagehead__eyebrow">Developer guide</p>
-      <h2 id="guide-title" className="doc__title" style={{ marginTop: 4 }}>
-        CLI, CI checks and MCP: set up in ten minutes
-      </h2>
+    <section className="doc guide" aria-label="Setup guide">
       {GUIDE_INTRO.map((p) => (
         <p key={p} className="doc__body">
           {p}

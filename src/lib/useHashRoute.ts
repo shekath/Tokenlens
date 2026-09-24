@@ -13,9 +13,9 @@
 
 import { useEffect, useState } from 'react';
 
-export type Route = 'app' | 'docs' | 'faq';
+export type Route = 'app' | 'docs' | 'devtools' | 'faq';
 
-const ROUTES: Route[] = ['app', 'docs', 'faq'];
+const ROUTES: Route[] = ['app', 'docs', 'devtools', 'faq'];
 
 /**
  * The navigation, in order, with the dashboard first because it is the home
@@ -24,6 +24,7 @@ const ROUTES: Route[] = ['app', 'docs', 'faq'];
 export const NAV: { route: Route; label: string }[] = [
   { route: 'app', label: 'Dashboard' },
   { route: 'docs', label: 'Docs' },
+  { route: 'devtools', label: 'Dev tools' },
   { route: 'faq', label: 'FAQ' },
 ];
 

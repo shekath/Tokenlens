@@ -1,20 +1,12 @@
-import { useEffect } from 'react';
 import { FEATURE_DOCS } from '../lib/featureDocs';
 import { PLANS } from '../lib/entitlements';
 import { MODELS, PRICING_AS_OF } from '../lib/models';
 import { Banner } from './Banner';
 import { Shot } from './Shot';
-import { CliGuide } from './CliGuide';
+import { useEffect } from 'react';
+import { scrollToSection, sectionFromHash, useSectionLanding } from '../lib/useSectionLanding';
 
-/** "#/docs?s=cli-guide" lands on that section; the router ignores the query. */
-function sectionFromHash(hash: string): string | null {
-  const q = hash.split('?')[1];
-  return q ? new URLSearchParams(q).get('s') : null;
-}
-
-function scrollToDoc(id: string) {
-  document.getElementById(`doc-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
+const scrollToDoc = (id: string) => scrollToSection(`doc-${id}`);
 
 /**
  * The product documentation.
@@ -26,23 +18,21 @@ function scrollToDoc(id: string) {
 export function DocsPage({
   onPricing,
   onBack,
-  onKeys,
+  onDevTools,
 }: {
   onPricing: () => void;
   onBack: () => void;
-  /** Opens CLI & MCP keys (or sign-in); null when the app has no backend. */
-  onKeys: (() => void) | null;
+  /** The setup guide for the CLI lives on its own page, Dev tools. */
+  onDevTools: () => void;
 }) {
+  // "#/docs?s=cache" lands on that feature.
+  useSectionLanding('doc-');
+
+  // The setup guide lived here as "#/docs?s=cli-guide" before it moved to its
+  // own page; a link someone saved in that window still gets them there.
   useEffect(() => {
-    const land = () => {
-      const s = sectionFromHash(window.location.hash);
-      // A frame's grace so the lazily loaded page has laid out before we measure.
-      if (s) window.requestAnimationFrame(() => scrollToDoc(s));
-    };
-    land();
-    window.addEventListener('hashchange', land);
-    return () => window.removeEventListener('hashchange', land);
-  }, []);
+    if (sectionFromHash(window.location.hash) === 'cli-guide') onDevTools();
+  }, [onDevTools]);
 
   return (
     <main className="shell page">
@@ -68,11 +58,11 @@ export function DocsPage({
             {f.title}
           </a>
         ))}
-        <a className="docnav__link docnav__link--guide" href="#/docs?s=cli-guide" onClick={(e) => {
+        <a className="docnav__link docnav__link--guide" href="#/devtools" onClick={(e) => {
           e.preventDefault();
-          scrollToDoc('cli-guide');
+          onDevTools();
         }}>
-          Developer guide: CLI &amp; keys
+          Dev tools: setup guide
         </a>
       </nav>
 
@@ -109,10 +99,16 @@ export function DocsPage({
               <li key={w}>{w}</li>
             ))}
           </ul>
+
+          {feature.id === 'devtools' ? (
+            <div className="row" style={{ marginTop: 16 }}>
+              <button type="button" className="btn btn--primary" onClick={onDevTools}>
+                Open the setup guide in Dev tools
+              </button>
+            </div>
+          ) : null}
         </article>
       ))}
-
-      <CliGuide onKeys={onKeys} />
 
       <section className="doc" aria-labelledby="doc-plans">
         <h2 id="doc-plans" className="doc__title">

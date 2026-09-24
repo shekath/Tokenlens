@@ -82,6 +82,9 @@ const ProposalBuilder = lazy(() =>
 const DocsPage = lazy(() =>
   retryImport(() => import('./components/DocsPage'), 'Docs').then((m) => ({ default: m.DocsPage })),
 );
+const DevToolsPage = lazy(() =>
+  retryImport(() => import('./components/DevToolsPage'), 'Dev tools').then((m) => ({ default: m.DevToolsPage })),
+);
 const FaqPage = lazy(() =>
   retryImport(() => import('./components/FaqPage'), 'FAQ').then((m) => ({ default: m.FaqPage })),
 );
@@ -508,11 +511,12 @@ export default function App() {
       </header>
 
       {route !== 'app' ? (
-        <TabBoundary label={route === 'docs' ? 'Docs' : 'FAQ'}>
+        <TabBoundary label={route === 'docs' ? 'Docs' : route === 'devtools' ? 'Dev tools' : 'FAQ'}>
           <Suspense fallback={<div className="shell empty">Loading…</div>}>
             {route === 'docs' ? (
-              <DocsPage
-                onPricing={openPricing}
+              <DocsPage onPricing={openPricing} onBack={() => goTo('app')} onDevTools={() => goTo('devtools')} />
+            ) : route === 'devtools' ? (
+              <DevToolsPage
                 onBack={() => goTo('app')}
                 onKeys={
                   !hasBackend

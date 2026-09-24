@@ -1316,7 +1316,7 @@ claude mcp add tokenticks -e TOKENTICKS_KEY=<the key> -- npx -y tokenticks mcp`}
       )}
       <p className="muted" style={{ fontSize: 12, margin: 0 }}>
         New to the CLI?{' '}
-        <a href="#/docs?s=cli-guide">
+        <a href="#/devtools">
           Read the setup guide
         </a>{' '}
         — commands, CI workflow and MCP config, ready to copy.

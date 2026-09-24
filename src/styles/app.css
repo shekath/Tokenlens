@@ -1814,6 +1814,8 @@ table.data tbody tr.is-on td:first-child {
 .navlink {
   min-height: 32px;
   padding: 0 10px;
+  /* "Dev tools" is two words; on a narrow phone the row wraps, not the label. */
+  white-space: nowrap;
   background: none;
   border: 1px solid transparent;
   border-radius: var(--r-sm);

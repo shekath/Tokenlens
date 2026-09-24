@@ -5,7 +5,7 @@
  *   npm run build && npm run preview &
  *   node scripts/visual-check.mjs [outputDir]
  *
- * Every tab of the dashboard is walked, then the #/docs and #/faq routes.
+ * Every tab of the dashboard is walked, then the #/docs, #/devtools and #/faq routes.
  *
  * Fails (exit 1) on a horizontal page scroll at any tested width, on an SVG label
  * that spills outside its own chart, on a floating panel that hangs off either
@@ -131,7 +131,7 @@ for (const cfg of CONFIGS) {
   // risk is different: full-bleed banners and 1200px screenshots are the widest
   // things the app renders, and a broken screenshot path degrades to alt text
   // rather than to an error, so check that the pixels actually arrived.
-  for (const route of ['docs', 'faq']) {
+  for (const route of ['docs', 'devtools', 'faq']) {
     await page.evaluate((r) => { window.location.hash = `#/${r}`; }, route);
     await page.waitForTimeout(700);
     // Lazy images below the fold never load at the default scroll position.
@@ -160,7 +160,7 @@ for (const cfg of CONFIGS) {
     // The footer used to live inside the dashboard's <main>, so it disappeared
     // on both reference pages. It is the way back from the bottom of a long
     // page; if it is missing here, that regressed.
-    for (const link of ['Dashboard', 'Docs', 'FAQ']) {
+    for (const link of ['Dashboard', 'Docs', 'Dev tools', 'FAQ']) {
       if (!page_.footerLinks.includes(link)) {
         problems.push(`${cfg.name} / #/${route}: no "${link}" link in the footer`);
       }

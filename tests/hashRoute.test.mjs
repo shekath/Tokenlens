@@ -12,6 +12,7 @@ import { NAV, hashFor, routeFromHash } from '../src/lib/useHashRoute.ts';
 test('the pages are reachable by their own hash', () => {
   assert.equal(routeFromHash('#/docs'), 'docs');
   assert.equal(routeFromHash('#/faq'), 'faq');
+  assert.equal(routeFromHash('#/devtools'), 'devtools');
   assert.equal(routeFromHash('#docs'), 'docs', 'the slash is optional');
   assert.equal(routeFromHash('#/DOCS'), 'docs', 'and the case is not load-bearing');
 });
@@ -27,7 +28,7 @@ test('a trailing query on the hash does not break the match', () => {
 });
 
 test('the hash written back is the one that reads back', () => {
-  for (const route of ['app', 'docs', 'faq']) {
+  for (const route of ['app', 'docs', 'devtools', 'faq']) {
     assert.equal(routeFromHash(hashFor(route)), route);
   }
 });
@@ -37,11 +38,19 @@ test('the navigation lists every route, dashboard first', () => {
   // order and the labels are decided.
   assert.deepEqual(
     NAV.map((item) => item.route),
-    ['app', 'docs', 'faq'],
+    ['app', 'docs', 'devtools', 'faq'],
     'the dashboard is the home page and comes before the reference pages',
   );
   for (const item of NAV) {
     assert.ok(item.label.trim(), `${item.route} needs a label`);
     assert.equal(routeFromHash(hashFor(item.route)), item.route);
   }
+});
+
+test('a section query lands on the page and names the section', async () => {
+  const { sectionFromHash } = await import('../src/lib/useSectionLanding.ts');
+  assert.equal(routeFromHash('#/devtools?s=ci'), 'devtools');
+  assert.equal(sectionFromHash('#/devtools?s=ci'), 'ci');
+  assert.equal(sectionFromHash('#/docs'), null);
+  assert.equal(sectionFromHash('#/docs?from=email'), null);
 });
