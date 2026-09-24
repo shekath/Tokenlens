@@ -258,6 +258,7 @@ export const GUIDE_STEPS: GuideStep[] = [
       },
     ],
     notes: [
+      'This table and the dashboard update every day as models launch and prices change. The CLI carries the list from its release, so a model added since then prices after the next release; npx always fetches the newest one.',
       'The free plan prices five models (marked in the table); counts work for all of them. Pro and Team price every model.',
       'Using Codex or GitHub Copilot? They run on OpenAI models, so price your prompts with the OpenAI ids. Vendor variants that are not in the table, such as coding-tuned models, are not priced yet.',
     ],

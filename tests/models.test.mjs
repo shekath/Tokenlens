@@ -67,13 +67,17 @@ test('batch discounts are a fraction strictly between 0 and 1', () => {
 });
 
 test("Anthropic's published multipliers are applied as documented", () => {
-  // Write is 1.25x input; read is 0.1x input, except Claude Fable 5.1's flat $0.25.
+  // Write is 1.25x input. Read is at most 0.1x input: most models are exactly
+  // 0.1x, and some are cheaper still (Fable 5.1's flat $0.25, Opus 5.5's 0.05x).
+  // The daily sync brings those exceptions in from the price list, so the
+  // invariant is the ceiling, not a single multiplier.
   for (const m of MODELS.filter((x) => x.vendor === 'Anthropic')) {
     assert.ok(Math.abs(m.cacheWritePerM - m.inputPerM * 1.25) < 1e-9, `${m.id} write`);
-    const expectedRead = m.id === 'claude-fable-5-1' ? 0.25 : m.inputPerM * 0.1;
-    assert.ok(Math.abs(m.cacheReadPerM - expectedRead) < 1e-9, `${m.id} read`);
+    assert.ok(m.cacheReadPerM > 0 && m.cacheReadPerM <= m.inputPerM * 0.1 + 1e-9, `${m.id} read ${m.cacheReadPerM}`);
     assert.equal(m.batchDiscount, 0.5, `${m.id} batch`);
   }
+  // The documented exception, pinned so a sync cannot silently change it.
+  assert.equal(MODELS.find((m) => m.id === 'claude-fable-5-1').cacheReadPerM, 0.25);
 });
 
 test('estimate factors are plausible multipliers, and exact families are 1', () => {

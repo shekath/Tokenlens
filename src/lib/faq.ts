@@ -50,7 +50,9 @@ export const FAQ: FaqSection[] = [
       {
         q: 'How current are the prices?',
         a: [
-          'Every rate carries the date it was published, shown in the footer. Vendors change prices without much notice, so treat the figures as a planning tool and check the vendor’s own pricing page before you commit a budget to them.',
+          'The model list is checked every day against a widely used open price list, LiteLLM’s, and new models and price changes are picked up from it automatically. The date of the last update is shown in the footer.',
+          'Two kinds of change wait for a person instead: a price that moves by half or more, which is as often a renamed model as a real price cut, and a context window that shrinks. So a surprising number is held back rather than shown to you.',
+          'Vendors change prices without much notice, so treat the figures as a planning tool and check the vendor’s own pricing page before you commit a budget to them.',
         ],
       },
     ],

@@ -1,0 +1,118 @@
+# Keeps the model list current: new models and price changes, every day.
+#
+# Source: LiteLLM's open price list. Policy (scripts/modelSync.ts):
+#   - safe changes - small price moves, larger context windows, new models
+#     that fit a known product family - are tested, committed to the default
+#     branch and deployed, with no one involved;
+#   - changes that could mislead - a price move of 50% or more, a smaller
+#     context window, an upstream that disagrees with itself, more than 12
+#     new models at once - go to one pull request, "Model prices: changes to
+#     check", with a table saying why each was held;
+#   - nothing is ever removed.
+#
+# Set the repository variable MODEL_SYNC_MODE to "review" to send every change
+# through the pull request instead.
+#
+# One-time setting for the pull request: Settings -> Actions -> General ->
+# Workflow permissions -> tick "Allow GitHub Actions to create and approve
+# pull requests".
+name: Sync model prices
+
+on:
+  schedule:
+    - cron: "23 5 * * *" # daily, 05:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write # commit the safe updates, push the review branch
+  pull-requests: write # open the review pull request
+  actions: write # start the site deploy (see "Publish")
+
+concurrency:
+  group: sync-models
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      REVIEW_BRANCH: bot/model-price-review
+      MODE: ${{ vars.MODEL_SYNC_MODE }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci
+
+      - name: Apply the changes that need no review
+        id: safe
+        run: node --experimental-strip-types scripts/sync-models.mjs --mode safe --report safe.md
+
+      # The same bar a person's change would have to clear. A value that
+      # breaks an invariant in the tests stops here, before anyone sees it.
+      - name: Check them
+        if: steps.safe.outputs.changed == 'true'
+        run: |
+          npm test
+          npm run typecheck
+          npm run build
+
+      - name: Publish them
+        if: steps.safe.outputs.changed == 'true' && env.MODE != 'review'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/models.data.ts
+          { echo "Models: ${{ steps.safe.outputs.applied }} update(s) from the daily price sync"; echo; cat safe.md; } > msg.txt
+          git commit -q -F msg.txt
+          git push -q origin "HEAD:$DEFAULT_BRANCH"
+          # A push made with the workflow's own token starts no other workflow,
+          # so the site deploy has to be asked for.
+          gh workflow run static.yml --ref "$DEFAULT_BRANCH"
+
+      - name: Prepare the changes that need a look
+        id: review
+        run: node --experimental-strip-types scripts/sync-models.mjs --mode all --report review.md
+
+      - name: Open or update the review pull request
+        if: steps.review.outputs.changed == 'true' || (env.MODE == 'review' && steps.safe.outputs.changed == 'true')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          { [ "$MODE" = review ] && cat safe.md && echo; cat review.md; } > body.md
+
+          # Nothing new since the branch was last pushed: leave the pull request alone
+          # rather than adding an identical commit every day.
+          if git fetch -q origin "$REVIEW_BRANCH" 2>/dev/null \
+             && git diff --quiet "origin/$REVIEW_BRANCH" -- src/lib/models.data.ts; then
+            echo "The review branch already holds these changes."
+            exit 0
+          fi
+
+          git checkout -q -B "$REVIEW_BRANCH"
+          git add src/lib/models.data.ts
+          { echo "Models: changes held for review"; echo; cat body.md; } > msg.txt
+          git commit -q -F msg.txt
+          git push -q --force origin "$REVIEW_BRANCH"
+
+          if gh pr view "$REVIEW_BRANCH" --json state -q .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$REVIEW_BRANCH" --body-file body.md
+          elif ! gh pr create --base "$DEFAULT_BRANCH" --head "$REVIEW_BRANCH" \
+                 --title "Model prices: changes to check" --body-file body.md; then
+            echo "::error::The changes are on the $REVIEW_BRANCH branch, but the pull request could not be opened. Allow it once under Settings → Actions → General → Workflow permissions → 'Allow GitHub Actions to create and approve pull requests', or open it by hand."
+            exit 1
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          for f in safe.md review.md; do [ -f "$f" ] && { cat "$f"; echo; } >> "$GITHUB_STEP_SUMMARY"; done
+          true

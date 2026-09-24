@@ -10,7 +10,7 @@ Paid tiers add the operational tooling around it.
 
 | | Hobby (free) | Pro ($12/mo, $99/yr) | Team ($39/mo) |
 |---|---|---|---|
-| Model coverage | Top 5 foundational | All 30+ | All + custom rate cards |
+| Model coverage | Top 5 foundational | Every listed model, synced daily | All + custom rate cards |
 | Caching maths | Baseline uncached | Break-even & ROI simulator | TTL lifecycle, multi-turn |
 | Batch ingestion | Single paste | CSV / JSONL, 10k rows | Unlimited |
 | Optimisation | Character & word counts | Token Trimmer linter | Team-wide rules |

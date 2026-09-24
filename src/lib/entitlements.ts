@@ -7,7 +7,16 @@
  * policies; this file is the client's copy, and the database is the authority.
  */
 
+import { MODELS } from './models.ts';
+
 export type Tier = 'free' | 'pro' | 'team';
+
+/**
+ * "70+", from the registry - the daily model sync adds rows, so a count typed
+ * into the pricing copy would be wrong the day after a launch. Rounded down to
+ * a ten so the claim stays true between syncs.
+ */
+const MODEL_COUNT = `${Math.floor(MODELS.length / 10) * 10}+`;
 
 export type SubscriptionStatus =
   | 'inactive'
@@ -175,7 +184,7 @@ export const PLANS: Plan[] = [
       annual: 'VITE_LEMON_VARIANT_PRO_ANNUAL',
     },
     highlights: [
-      'All 30+ commercial models',
+      `All ${MODEL_COUNT} commercial models, updated daily`,
       'Cache break-even and ROI simulator',
       'Token Trimmer and cache-order linter',
       'Trimmer and cache checks in CI and your editor (CLI + MCP)',
@@ -230,7 +239,7 @@ export const COMPARISON: Array<{ label: string; free: string; pro: string; team:
   {
     label: 'Model coverage',
     free: 'Top 5 foundational models',
-    pro: 'All 30+ commercial models',
+    pro: `All ${MODEL_COUNT} commercial models`,
     team: 'All models plus custom rate cards',
   },
   {
