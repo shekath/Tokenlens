@@ -1,4 +1,5 @@
-import { Suspense, lazy, useCallback, useDeferredValue, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { modelFromSearch, withoutModelParam } from './lib/deepLink';
 import {
   DEFAULT_COMPARE_IDS,
   DEFAULT_MODEL_ID,
@@ -221,6 +222,13 @@ export default function App() {
   const [modelId, setModelId] = usePersisted<string>('tokenticks.model', DEFAULT_MODEL_ID, (v) =>
     typeof v === 'string' && MODELS_BY_ID[v] ? v : null,
   );
+  // A link from a model pricing page (?model=<id>) selects that model once.
+  useEffect(() => {
+    const linked = modelFromSearch(window.location.search, (id) => Boolean(MODELS_BY_ID[id]));
+    if (!linked) return;
+    setModelId(linked);
+    window.history.replaceState(window.history.state, '', withoutModelParam(window.location.href));
+  }, []); // once, on load
   const [assumptions, setAssumptions] = usePersisted<CostAssumptions>(
     'tokenticks.assumptions',
     DEFAULT_ASSUMPTIONS,

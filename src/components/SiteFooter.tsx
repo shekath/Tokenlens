@@ -56,6 +56,9 @@ export function SiteFooter({
               {item.label}
             </button>
           ))}
+          <a className="linkish" href={`${import.meta.env.BASE_URL}models/`}>
+            Model prices
+          </a>
           <button type="button" className="linkish" onClick={onPricing}>
             Plans and pricing
           </button>

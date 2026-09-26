@@ -1,6 +1,26 @@
 import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import type { Plugin } from 'vite';
+import { MODEL_DATA, PRICING_AS_OF } from './src/lib/models.data.ts';
+import { modelPath, renderIndex, renderModelPage, renderSitemap } from './scripts/modelPages.ts';
+
+/**
+ * Writes the static model pricing pages (/models/, /models/<id>/) and
+ * sitemap.xml into the build. See scripts/modelPages.ts for why they exist.
+ */
+function modelPages(): Plugin {
+  return {
+    name: 'tokenticks-model-pages',
+    apply: 'build',
+    generateBundle() {
+      const emit = (fileName: string, source: string) => this.emitFile({ type: 'asset', fileName, source });
+      for (const m of MODEL_DATA) emit(`${modelPath(m)}index.html`, renderModelPage(m, MODEL_DATA, PRICING_AS_OF));
+      emit('models/index.html', renderIndex(MODEL_DATA, PRICING_AS_OF));
+      emit('sitemap.xml', renderSitemap(MODEL_DATA, PRICING_AS_OF));
+    },
+  };
+}
 
 /**
  * Which commit this bundle was built from.
@@ -25,7 +45,7 @@ export default defineConfig({
   define: {
     __APP_BUILD__: JSON.stringify(buildStamp()),
   },
-  plugins: [react()],
+  plugins: [react(), modelPages()],
   base: '/Tokenlens/',
   build: {
     target: 'es2022',
