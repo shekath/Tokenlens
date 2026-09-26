@@ -7,7 +7,7 @@
 
 import type { Model } from './models.ts';
 
-export const PRICING_AS_OF = '2026-09-24';
+export const PRICING_AS_OF = '2026-09-26';
 
 export const MODEL_DATA: Model[] = [
   // ----------------------------------------------------------- Anthropic
@@ -215,7 +215,7 @@ export const MODEL_DATA: Model[] = [
     label: "GPT-5",
     vendor: "OpenAI",
     tokenizer: "o200k",
-    context: 400_000,
+    context: 272_000,
     maxOutput: 128_000,
     inputPerM: 1.25,
     outputPerM: 10,
@@ -228,7 +228,7 @@ export const MODEL_DATA: Model[] = [
     label: "GPT-5 mini",
     vendor: "OpenAI",
     tokenizer: "o200k",
-    context: 400_000,
+    context: 272_000,
     maxOutput: 128_000,
     inputPerM: 0.25,
     outputPerM: 2,
@@ -241,7 +241,7 @@ export const MODEL_DATA: Model[] = [
     label: "GPT-5 nano",
     vendor: "OpenAI",
     tokenizer: "o200k",
-    context: 400_000,
+    context: 272_000,
     maxOutput: 128_000,
     inputPerM: 0.05,
     outputPerM: 0.4,
@@ -741,11 +741,11 @@ export const MODEL_DATA: Model[] = [
     label: "DeepSeek V3",
     vendor: "DeepSeek",
     tokenizer: "deepseek",
-    context: 128_000,
+    context: 131_072,
     maxOutput: 8192,
-    inputPerM: 0.27,
-    outputPerM: 1.1,
-    cacheReadPerM: 0.07,
+    inputPerM: 0.28,
+    outputPerM: 0.42,
+    cacheReadPerM: 0.028,
   },
   {
     id: "deepseek-r1",
@@ -753,11 +753,11 @@ export const MODEL_DATA: Model[] = [
     label: "DeepSeek R1",
     vendor: "DeepSeek",
     tokenizer: "deepseek",
-    context: 128_000,
+    context: 131_072,
     maxOutput: 65_536,
-    inputPerM: 0.55,
-    outputPerM: 2.19,
-    cacheReadPerM: 0.14,
+    inputPerM: 0.28,
+    outputPerM: 0.42,
+    cacheReadPerM: 0.028,
   },
   {
     id: "deepseek-v3-2",
@@ -802,9 +802,10 @@ export const MODEL_DATA: Model[] = [
     label: "Mistral Large 2",
     vendor: "Mistral",
     tokenizer: "mistral",
-    context: 131_072,
-    inputPerM: 2,
-    outputPerM: 6,
+    context: 262_144,
+    inputPerM: 0.5,
+    outputPerM: 1.5,
+    cacheReadPerM: 0.05,
     batchDiscount: 0.5,
   },
   {
@@ -813,9 +814,10 @@ export const MODEL_DATA: Model[] = [
     label: "Mistral Small 3",
     vendor: "Mistral",
     tokenizer: "mistral",
-    context: 131_072,
-    inputPerM: 0.1,
-    outputPerM: 0.3,
+    context: 262_144,
+    inputPerM: 0.15,
+    outputPerM: 0.6,
+    cacheReadPerM: 0.015,
     batchDiscount: 0.5,
   },
   {
