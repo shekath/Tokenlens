@@ -10,6 +10,11 @@
 #     check", with a table saying why each was held;
 #   - nothing is ever removed.
 #
+# Every price that lands on the default branch is also written to the price
+# history (public/price-history.json, published with the site), dated the day
+# it was first seen - whether it came from this sync, a merged review pull
+# request or a hand edit. The price-change alerts read it.
+#
 # Set the repository variable MODEL_SYNC_MODE to "review" to send every change
 # through the pull request instead.
 #
@@ -70,12 +75,30 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/lib/models.data.ts
+          node --experimental-strip-types scripts/price-history.mjs
+          git add src/lib/models.data.ts public/price-history.json
           { echo "Models: ${{ steps.safe.outputs.applied }} update(s) from the daily price sync"; echo; cat safe.md; } > msg.txt
           git commit -q -F msg.txt
           git push -q origin "HEAD:$DEFAULT_BRANCH"
           # A push made with the workflow's own token starts no other workflow,
           # so the site deploy has to be asked for.
+          gh workflow run static.yml --ref "$DEFAULT_BRANCH"
+
+      # Catches what the step above does not: a review pull request merged since
+      # yesterday, or a hand edit. Records only what is committed - in review
+      # mode the safe changes above were not published, so they are dropped
+      # from the working tree first.
+      - name: Record price history
+        id: history
+        run: |
+          git checkout -- src/lib/models.data.ts
+          node --experimental-strip-types scripts/price-history.mjs
+          if git diff --quiet -- public/price-history.json; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/price-history.json
+          git commit -q -m "Models: record price history for $(date -u +%F)"
+          git push -q origin "HEAD:$DEFAULT_BRANCH"
           gh workflow run static.yml --ref "$DEFAULT_BRANCH"
 
       - name: Prepare the changes that need a look
