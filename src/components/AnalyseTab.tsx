@@ -5,6 +5,7 @@ import type { TextMetrics, TokenMetrics } from '../lib/metrics';
 import { callCost, effectiveCost, utilization, type CostAssumptions } from '../lib/cost';
 import { compact, num, pct, ratio, usd, usdAxis, visibleToken } from '../lib/format';
 import { ModelTable, type ModelRow } from './ModelTable';
+import { BudgetCard } from './BudgetCard';
 import { TokenInspector } from './TokenInspector';
 import { BarRows, Histogram, StackedBar, type BarDatum } from './charts';
 import { niceTicks } from '../lib/scale';
@@ -229,6 +230,15 @@ export function AnalyseTab({
               <Levers model={model} tokens={tokens} assumptions={assumptions} />
             </section>
           </div>
+
+          {empty ? null : (
+            <BudgetCard
+              rows={rows}
+              model={model}
+              plannedCallsPerDay={assumptions.callsPerDay}
+              onSelect={setModelId}
+            />
+          )}
         </section>
 
         {/* ------------------------------------------------------- context --- */}

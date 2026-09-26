@@ -1,5 +1,6 @@
 import type { CostAssumptions } from '../lib/cost';
 import { num, pct } from '../lib/format';
+import { OUTPUT_PRESETS, activePreset } from '../lib/outputPresets';
 
 /**
  * One filter row above everything it scopes. Every cost figure on the page - tiles,
@@ -39,10 +40,31 @@ export function Assumptions({
             type="range"
             min={0}
             max={16000}
-            step={50}
+            step={10}
             value={value.outputTokens}
             onChange={(e) => set('outputTokens', Number(e.target.value))}
           />
+          <div className="presets" role="group" aria-label="Typical answer lengths">
+            {OUTPUT_PRESETS.map((p) => {
+              const on = activePreset(value.outputTokens)?.id === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`chip chip--sm${on ? ' is-on' : ''}`}
+                  aria-pressed={on}
+                  title={`${p.hint}: about ${num(p.tokens)} tokens`}
+                  onClick={() => set('outputTokens', p.tokens)}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+          <span className="muted" style={{ fontSize: 11 }}>
+            Typical lengths to start from. The answer is usually most of the bill, so measure
+            yours when you can.
+          </span>
         </div>
 
         <div className="field">
